@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Shield, LogOut, Loader2, Check, X, Download, Trash2 } from 'lucide-react';
 import { getFlaggedSubmissions, getLeaderScores, LeaderScore } from '@/lib/firebase';
 
@@ -16,7 +16,7 @@ interface FlaggedSubmission {
 }
 
 export default function AdminDashboard() {
-  const router = useRouter();
+ // const router = useRouter();
   const searchParams = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
