@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Shield, LogOut, Loader2, Check, X, Download, Trash2 } from 'lucide-react';
 import { getFlaggedSubmissions, getLeaderScores, LeaderScore } from '@/lib/firebase';
@@ -15,7 +15,7 @@ interface FlaggedSubmission {
   createdAt: number;
 }
 
-export default function AdminDashboard() {
+function AdminDashboardContent() {
   const searchParams = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -389,5 +389,21 @@ export default function AdminDashboard() {
         )}
       </div>
     </div>
+  );
+}
+
+function AdminLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+    </div>
+  );
+}
+
+export default function AdminDashboard() {
+  return (
+    <Suspense fallback={<AdminLoadingFallback />}>
+      <AdminDashboardContent />
+    </Suspense>
   );
 }
