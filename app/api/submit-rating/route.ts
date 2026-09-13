@@ -4,7 +4,7 @@ import {
   logFraudDetection,
   getSubmissionCountByIp,
   flagSuspiciousIp,
-  Submission,
+ // Submission,
 } from '@/lib/firebase';
 import { verifyTurnstileToken } from '@/lib/turnstile';
 import { hashFingerprint } from '@/lib/fingerprint';
