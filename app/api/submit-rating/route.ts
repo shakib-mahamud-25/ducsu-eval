@@ -4,10 +4,8 @@ import {
   logFraudDetection,
   getSubmissionCountByIp,
   flagSuspiciousIp,
- // Submission,
 } from '@/lib/firebase';
 import { verifyTurnstileToken } from '@/lib/turnstile';
-import { hashFingerprint } from '@/lib/fingerprint';
 
 interface SubmitRatingRequest {
   leaderId: string;
@@ -62,7 +60,6 @@ export async function POST(request: NextRequest) {
 
     // 6. Fraud detection logic
     let shouldFlag = false;
-    let flagReason = '';
 
     if (submissionCountByIp >= IP_HARD_REVIEW_CAP) {
       // Hard cap: block outright if too many submissions
@@ -76,7 +73,6 @@ export async function POST(request: NextRequest) {
     } else if (submissionCountByIp >= IP_SOFT_CAP) {
       // Soft cap: allow but flag for admin review
       shouldFlag = true;
-      flagReason = `Soft cap exceeded: ${submissionCountByIp + 1} submissions from IP ${clientIp}`;
     }
 
     // 7. Log fraud detection record
@@ -111,7 +107,7 @@ export async function POST(request: NextRequest) {
 }
 
 // CORS options for preflight requests
-export async function OPTIONS(request: NextRequest) {
+export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {
