@@ -25,7 +25,7 @@ export default function AdminDashboard() {
   const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'flagged' | 'results' | 'data'>('flagged');
-  const [editingNote, setEditingNote] = useState<string | null>(null);
+ // const [editingNote, setEditingNote] = useState<string | null>(null);
   const [adminNote, setAdminNote] = useState('');
 
   // Check if already authenticated via URL
