@@ -120,14 +120,14 @@ export const getUserIpViaWebRTC = (): Promise<string | null> => {
       iceServers: [],
     });
 
-    const iceCallback = (ice: RTCIceCandidate) => {
+    const iceCallback = (ice: RTCPeerConnectionIceEvent) => {
       if (!ice || !ice.candidate) {
         pc.close();
         resolve(null);
         return;
       }
 
-      const ipMatch = ice.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
+      const ipMatch = ice.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
       if (ipMatch) {
         pc.close();
         resolve(ipMatch[0]);
