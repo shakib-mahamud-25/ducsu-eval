@@ -16,7 +16,6 @@ interface FlaggedSubmission {
 }
 
 export default function AdminDashboard() {
- // const router = useRouter();
   const searchParams = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -25,8 +24,6 @@ export default function AdminDashboard() {
   const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'flagged' | 'results' | 'data'>('flagged');
- // const [editingNote, setEditingNote] = useState<string | null>(null);
-  const [adminNote, setAdminNote] = useState('');
 
   // Check if already authenticated via URL
   useEffect(() => {
@@ -38,8 +35,8 @@ export default function AdminDashboard() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Simple password verification (in production, use proper auth)
+
+    // Simple password verification
     if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
       setIsAuthenticated(true);
       setPasswordError('');
@@ -59,12 +56,12 @@ export default function AdminDashboard() {
     try {
       const flagged = await getFlaggedSubmissions();
       const scores = await getLeaderScores();
-      
+
       const flaggedArray = Array.from(flagged.values()).map((f, idx) => ({
         ...f,
         id: idx.toString(),
       }));
-      
+
       setFlaggedSubmissions(flaggedArray);
       setLeaderScores(scores);
     } catch (error) {
@@ -88,8 +85,8 @@ export default function AdminDashboard() {
 
   const handleDeleteData = async () => {
     if (window.confirm('Are you sure? This will delete all fraud detection data permanently.')) {
-      // Implement deletion logic
       console.log('Deleting fraud detection data...');
+      // In production, call Firebase delete function
     }
   };
 
@@ -241,7 +238,7 @@ export default function AdminDashboard() {
                       <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                           <p className="text-gray-400 text-sm">IP Address</p>
-                          <p className="text-white font-mono">{submission.ip_address}</p>
+                          <p className="text-white font-mono text-sm break-all">{submission.ip_address}</p>
                         </div>
                         <div>
                           <p className="text-gray-400 text-sm">Submissions from IP</p>
@@ -252,28 +249,35 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="mb-4">
-                        <p className="text-gray-400 text-sm mb-2">Admin Note</p>
-                        {editingNote === idx ? (
-                          <textarea
-                            value={adminNote}
-                            onChange={(e) => setAdminNote(e.target.value)}
-                            className="w-full bg-gray-700 text-white p-2 rounded text-sm"
-                            rows={2}
-                          />
-                        ) : (
-                          <p className="text-gray-300 text-sm">
-                            {submission.admin_note || 'No notes'}
-                          </p>
-                        )}
+                        <p className="text-gray-400 text-sm mb-2">Status</p>
+                        <p className="text-white text-sm capitalize font-semibold">
+                          {submission.status === 'pending' && (
+                            <span className="text-yellow-400">● Pending Review</span>
+                          )}
+                          {submission.status === 'approved' && (
+                            <span className="text-green-400">✓ Approved</span>
+                          )}
+                          {submission.status === 'rejected' && (
+                            <span className="text-red-400">✗ Rejected</span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="mb-4">
+                        <p className="text-gray-400 text-sm mb-2">Fingerprints Detected</p>
+                        <p className="text-gray-300 text-xs">
+                          {submission.fingerprints.length} unique device(s)
+                        </p>
                       </div>
 
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleApprove(idx)}
+                          disabled={submission.status === 'approved'}
                           className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition ${
                             submission.status === 'approved'
-                              ? 'bg-green-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-green-600'
+                              ? 'bg-green-600 text-white cursor-default'
+                              : 'bg-gray-700 text-gray-300 hover:bg-green-600 hover:text-white'
                           }`}
                         >
                           <Check size={16} />
@@ -281,10 +285,11 @@ export default function AdminDashboard() {
                         </button>
                         <button
                           onClick={() => handleReject(idx)}
+                          disabled={submission.status === 'rejected'}
                           className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition ${
                             submission.status === 'rejected'
-                              ? 'bg-red-600 text-white'
-                              : 'bg-gray-700 text-gray-300 hover:bg-red-600'
+                              ? 'bg-red-600 text-white cursor-default'
+                              : 'bg-gray-700 text-gray-300 hover:bg-red-600 hover:text-white'
                           }`}
                         >
                           <X size={16} />
@@ -324,7 +329,7 @@ export default function AdminDashboard() {
                           className="bg-gray-800 rounded-lg p-4 border border-gray-700"
                         >
                           <div className="flex justify-between items-start mb-2">
-                            <p className="font-semibold">{score.leaderId}</p>
+                            <p className="font-semibold text-sm">{score.leaderId}</p>
                             <span className="text-lg font-bold text-yellow-400">
                               {score.averageScore.toFixed(2)}/5
                             </span>
@@ -338,7 +343,7 @@ export default function AdminDashboard() {
                             />
                           </div>
                           <p className="text-gray-400 text-sm mt-2">
-                            {score.totalVotes} votes
+                            {score.totalVotes} vote{score.totalVotes !== 1 ? 's' : ''}
                           </p>
                         </div>
                       ))}
@@ -359,12 +364,15 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 bg-gray-800 rounded-lg p-4">
                   <p className="text-gray-300 text-sm">
-                    <strong>Current Data Size:</strong> {(Math.random() * 5).toFixed(2)} MB
+                    <strong>Flagged Submissions:</strong> {flaggedSubmissions.length}
                   </p>
                   <p className="text-gray-300 text-sm">
-                    <strong>Records:</strong> Fraud Detection: {flaggedSubmissions.length} | Submissions: {leaderScores.size}
+                    <strong>Total Leaders Voted:</strong> {leaderScores.size}
+                  </p>
+                  <p className="text-gray-300 text-sm">
+                    <strong>Total Votes:</strong> {Array.from(leaderScores.values()).reduce((sum, s) => sum + s.totalVotes, 0)}
                   </p>
                 </div>
 
