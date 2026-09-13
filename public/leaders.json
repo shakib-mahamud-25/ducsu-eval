@@ -6,7 +6,7 @@
       "nameAlt": "Shadik Kayem",
       "position": "Vice-President",
       "category": "top_executive",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/vp.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/vp.jpg",
       "bio": "Vice-President, DUCSU 2025"
     },
     {
@@ -14,7 +14,7 @@
       "name": "S M Farhad",
       "position": "General Secretary",
       "category": "top_executive",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/gs.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/gs.jpg",
       "bio": "General Secretary, DUCSU 2025"
     },
     {
@@ -22,7 +22,7 @@
       "name": "Md. Mohiuddin Khan",
       "position": "Assistant General Secretary",
       "category": "top_executive",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/ags.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/ags.jpg",
       "bio": "Assistant General Secretary, DUCSU 2025"
     },
     {
@@ -30,7 +30,7 @@
       "name": "Fatema Tasnim Juma",
       "position": "Liberation War & Democratic Movement Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/lwdm-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/lwdm-sec.jpg",
       "bio": "LWDM Secretary, DUCSU 2025"
     },
     {
@@ -38,7 +38,7 @@
       "name": "Md. Iqbal Haider",
       "position": "Science & Technology Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/st-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/st-sec.jpg",
       "bio": "Science & Technology Secretary, DUCSU 2025"
     },
     {
@@ -46,7 +46,7 @@
       "name": "Umme Salma",
       "position": "Common Room, Reading Room & Cafeteria Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/crrc-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/crrc-sec.jpg",
       "bio": "CRRC Secretary, DUCSU 2025"
     },
     {
@@ -55,7 +55,7 @@
       "nameAlt": "Khan Jashim",
       "position": "International Affairs Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/ia-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/ia-sec.jpg",
       "bio": "International Affairs Secretary, DUCSU 2025"
     },
     {
@@ -63,7 +63,7 @@
       "name": "Musaddiq Ali Ibne Mohammad",
       "position": "Literature & Cultural Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/lc-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/lc-sec.jpg",
       "bio": "Literature & Cultural Secretary, DUCSU 2025"
     },
     {
@@ -71,7 +71,7 @@
       "name": "Sanjida Ahmed Tonni",
       "position": "Research & Publications Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/rp-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/rp-sec.jpg",
       "bio": "Research & Publications Secretary, DUCSU 2025"
     },
     {
@@ -79,7 +79,7 @@
       "name": "Arman Hossain",
       "position": "Sports Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/sports-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/sports-sec.jpg",
       "bio": "Sports Secretary, DUCSU 2025"
     },
     {
@@ -87,7 +87,7 @@
       "name": "Md. Asif Abdullah",
       "position": "Student Transport Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/transport-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/transport-sec.jpg",
       "bio": "Student Transport Secretary, DUCSU 2025"
     },
     {
@@ -96,7 +96,7 @@
       "nameAlt": "AB Zubair",
       "position": "Social Welfare Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/sw-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/sw-sec.jpg",
       "bio": "Social Welfare Secretary, DUCSU 2025"
     },
     {
@@ -104,7 +104,7 @@
       "name": "Md. Mazharul Islam",
       "position": "Career Development Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/cd-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/cd-sec.jpg",
       "bio": "Career Development Secretary, DUCSU 2025"
     },
     {
@@ -112,7 +112,7 @@
       "name": "M M Al Minhaz",
       "position": "Health & Environment Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/he-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/he-sec.jpg",
       "bio": "Health & Environment Secretary, DUCSU 2025"
     },
     {
@@ -121,7 +121,7 @@
       "nameAlt": "Sakhawat Jakaria",
       "position": "Human Rights & Legal Affairs Secretary",
       "category": "secretarial",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/hrla-sec.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/hrla-sec.jpg",
       "bio": "Human Rights & Legal Affairs Secretary, DUCSU 2025"
     },
     {
@@ -129,7 +129,7 @@
       "name": "Sabikunnahar Tamanna",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-1.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-1.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -137,7 +137,7 @@
       "name": "Sorbo Mitra Chakma",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-2.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-2.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -145,7 +145,7 @@
       "name": "Imran Hossain",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-3.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-3.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -153,7 +153,7 @@
       "name": "Mosammat Afsana Akter",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-4.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-4.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -161,7 +161,7 @@
       "name": "Tazinur Rahman",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-5.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-5.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -169,7 +169,7 @@
       "name": "Raihan Uddin",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-6.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-6.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -177,7 +177,7 @@
       "name": "Md. Miftahul Hossain Al Maruf",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-7.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-7.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -185,7 +185,7 @@
       "name": "Anas Ibn Munir",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-8.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-8.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -193,7 +193,7 @@
       "name": "Hema Chakma",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-9.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-9.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -202,7 +202,7 @@
       "nameAlt": "Opu Khan",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-10.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-10.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -210,7 +210,7 @@
       "name": "Md. Raisul Islam",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-11.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-11.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -218,7 +218,7 @@
       "name": "Md. Shahinur Rahman",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-12.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-12.jpg",
       "bio": "Executive Member, DUCSU 2025"
     },
     {
@@ -226,7 +226,7 @@
       "name": "Umma Uswatun Rafia",
       "position": "Executive Member",
       "category": "executive_member",
-      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/images/em-13.jpg",
+      "imageUrl": "https://raw.githubusercontent.com/shakib-mahamud-25/ducsu-eval/main/public/em-13.jpg",
       "bio": "Executive Member, DUCSU 2025"
     }
   ]
