@@ -61,6 +61,7 @@ export default function LeaderCard({
 
   return (
     <div
+      data-leader-id={id}
       onClick={onClick}
       className={`group relative overflow-hidden rounded-2xl bg-white shadow-lg transition-all duration-300 hover:shadow-2xl cursor-pointer ${
         isSelected ? 'ring-4 ring-purple-500 scale-105' : 'hover:scale-105'
