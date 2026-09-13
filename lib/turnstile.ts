@@ -2,7 +2,7 @@
 declare global {
   interface Window {
     turnstile?: {
-      render: (containerId: string, options: Record<string, any>) => void;
+      render: (containerId: string, options: Record<string, any>) => string;
       reset: (widgetId?: string) => void;
       remove: (widgetId?: string) => void;
       getResponse: (widgetId?: string) => string;
@@ -33,7 +33,7 @@ export const renderTurnstile = (
     onError: () => {
       onError?.();
     },
-  }) as string;
+  });
 };
 
 export const getTurnstileToken = (widgetId?: string): string => {
