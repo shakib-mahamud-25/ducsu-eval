@@ -9,7 +9,6 @@ import {
   equalTo, 
   get,
   onValue,
-  DataSnapshot,
   Unsubscribe
 } from 'firebase/database';
 
