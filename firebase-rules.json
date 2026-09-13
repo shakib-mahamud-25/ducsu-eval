@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "submissions": {
+      ".read": false,
+      ".write": false,
+      "$submissionId": {
+        ".validate": "newData.hasChildren(['leader_id', 'score', 'createdAt'])",
+        "leader_id": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "score": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "fraud_detection": {
+      ".read": false,
+      ".write": false,
+      "$fraudId": {
+        ".validate": "newData.hasChildren(['fingerprint_hash', 'ip_address', 'visitor_id', 'submissionTimestamp'])"
+      }
+    },
+    "flagged_submissions": {
+      ".read": false,
+      ".write": false,
+      "$flagId": {
+        ".validate": "newData.hasChildren(['ip_address', 'count_from_ip', 'fingerprints', 'status', 'admin_note', 'createdAt'])"
+      }
+    }
+  }
+}
