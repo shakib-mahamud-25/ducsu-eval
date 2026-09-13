@@ -6,8 +6,6 @@ import LeaderCard from '@/components/LeaderCard';
 import RatingSlider from '@/components/RatingSlider';
 import {
   detectIncognitoMode,
-  getFingerprint,
-  getUserIpAddress,
   hasUserVoted,
   markAsVoted,
   generateDeviceFingerprint,
@@ -410,4 +408,4 @@ export default function Home() {
       </div>
     </div>
   );
-}
+        }
