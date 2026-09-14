@@ -33,16 +33,32 @@ function AdminDashboardContent() {
     }
   }, [searchParams]);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  const [loginLoading, setLoginLoading] = useState(false);
 
-    // Simple password verification
-    if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      setPasswordError('');
-      setPassword('');
-    } else {
-      setPasswordError('Invalid password');
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setPasswordError('');
+
+    try {
+      const response = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setIsAuthenticated(true);
+        setPassword('');
+      } else {
+        setPasswordError('Invalid password');
+      }
+    } catch (error) {
+      setPasswordError('Login failed. Please try again.');
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -156,9 +172,10 @@ function AdminDashboardContent() {
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 rounded-lg hover:shadow-lg transition"
+              disabled={loginLoading}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 rounded-lg hover:shadow-lg transition disabled:opacity-50"
             >
-              Login
+              {loginLoading ? 'Checking...' : 'Login'}
             </button>
           </form>
 
