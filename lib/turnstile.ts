@@ -24,7 +24,7 @@ export const renderTurnstile = (
     return '';
   }
 
-  return window.turnstile.render(containerId, {
+  return window.turnstile.render(`#${containerId}`, {
     sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
     theme: 'light',
     callback: (token: string) => {
