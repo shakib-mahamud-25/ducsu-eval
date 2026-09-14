@@ -87,9 +87,22 @@ export const logFraudDetection = async (
 export const getSubmissionCountByIp = async (ipAddress: string): Promise<number> => {
   const fraudRef = ref(database, 'fraud_detection');
   const q = query(fraudRef, orderByChild('ip_address'), equalTo(ipAddress));
-  
+
   const snapshot = await get(q);
-  return snapshot.size || 0;
+  if (!snapshot.exists()) return 0;
+
+  // Count DISTINCT devices (fingerprints) from this IP, not raw submission count.
+  // One legitimate voter can submit up to 28 times (once per leader), so counting
+  // raw submissions would falsely flag a single real person as many "voters".
+  const uniqueFingerprints = new Set<string>();
+  snapshot.forEach((child) => {
+    const record = child.val();
+    if (record?.fingerprint_hash) {
+      uniqueFingerprints.add(record.fingerprint_hash);
+    }
+  });
+
+  return uniqueFingerprints.size;
 };
 
 // ============================================
