@@ -6,13 +6,15 @@ import LeaderCard from '@/components/LeaderCard';
 import RatingSlider from '@/components/RatingSlider';
 import {
   detectIncognitoMode,
-  hasUserVoted,
-  markAsVoted,
+  hasVotedForLeader,
+  markLeaderAsVoted,
+  getVotedLeaderIds,
   generateDeviceFingerprint,
   hashFingerprint,
   getOrCreateVisitorId,
 } from '@/lib/fingerprint';
 import { loadTurnstileScript, renderTurnstile, getTurnstileToken, resetTurnstile } from '@/lib/turnstile';
+import { listenToScores, LeaderScore } from '@/lib/firebase';
 
 interface Leader {
   id: string;
@@ -36,7 +38,8 @@ export default function Home() {
   const [selectedLeader, setSelectedLeader] = useState<Leader | null>(null);
   const [rating, setRating] = useState<number>(3);
   const [showModal, setShowModal] = useState(false);
-  const [hasVoted, setHasVoted] = useState(false);
+  const [votedLeaderIds, setVotedLeaderIds] = useState<string[]>([]);
+  const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
   const [isIncognito, setIsIncognito] = useState(false);
   const [submission, setSubmission] = useState<SubmissionState>({
     loading: false,
@@ -77,8 +80,8 @@ export default function Home() {
   // Check voting status and incognito mode on mount
   useEffect(() => {
     const checkStatus = async () => {
-      // Check if user already voted
-      setHasVoted(hasUserVoted());
+      // Load which leaders this device has already voted for
+      setVotedLeaderIds(getVotedLeaderIds());
 
       // Load Turnstile script
       try {
@@ -93,6 +96,15 @@ export default function Home() {
     };
 
     checkStatus();
+  }, []);
+
+  // Live results listener - runs for the whole session, updates in real time
+  useEffect(() => {
+    const unsubscribe = listenToScores((scores) => {
+      setLeaderScores(scores);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleSelectLeader = (leader: Leader) => {
@@ -175,9 +187,9 @@ export default function Home() {
         throw new Error(data.error || 'Submission failed');
       }
 
-      // Mark as voted
-      markAsVoted();
-      setHasVoted(true);
+      // Mark this specific leader as voted (device can still vote for other leaders)
+      markLeaderAsVoted(selectedLeader.id);
+      setVotedLeaderIds((prev) => [...prev, selectedLeader.id]);
 
       setSubmission({
         loading: false,
@@ -236,6 +248,28 @@ export default function Home() {
     );
   }
 
+  const renderLeaderGrid = (category: Leader['category']) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {leaders
+        .filter((l) => l.category === category)
+        .map((leader) => {
+          const alreadyVoted = votedLeaderIds.includes(leader.id);
+          const score = leaderScores.get(leader.id);
+          return (
+            <LeaderCard
+              key={leader.id}
+              {...leader}
+              isSelected={selectedLeader?.id === leader.id}
+              alreadyVoted={alreadyVoted}
+              score={score?.averageScore || 0}
+              votes={score?.totalVotes || 0}
+              onClick={() => !alreadyVoted && handleSelectLeader(leader)}
+            />
+          );
+        })}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
       {/* Header */}
@@ -251,13 +285,15 @@ export default function Home() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-12">
         {/* Voting Status Banner */}
-        {hasVoted && (
+        {votedLeaderIds.length > 0 && (
           <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-4 mb-8 flex items-start gap-3">
             <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-green-900">Thank you for voting!</h3>
+              <h3 className="font-semibold text-green-900">
+                You've rated {votedLeaderIds.length} of {leaders.length} leaders
+              </h3>
               <p className="text-green-800 text-sm">
-                Your evaluation has been recorded. You can view live results below.
+                Live results are shown on each card below. You can rate the remaining leaders too.
               </p>
             </div>
           </div>
@@ -270,7 +306,7 @@ export default function Home() {
             <h3 className="font-semibold text-blue-900">How to Evaluate</h3>
             <p className="text-blue-800 text-sm">
               Click on any leader to rate them on a scale of 1-5. Your identity is completely anonymous and secure.
-              Voting is limited to {hasVoted ? 'once per device' : 'one submission per device'}.
+              You can rate each leader once — a leader you've already rated will show a checkmark and can't be rated again.
             </p>
           </div>
         </div>
@@ -282,18 +318,7 @@ export default function Home() {
             <h2 className="text-3xl font-bold text-gray-900 mb-6 pb-3 border-b-4 border-purple-600">
               Top Executive Posts
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {leaders
-                .filter((l) => l.category === 'top_executive')
-                .map((leader) => (
-                  <LeaderCard
-                    key={leader.id}
-                    {...leader}
-                    isSelected={selectedLeader?.id === leader.id}
-                    onClick={() => !hasVoted && handleSelectLeader(leader)}
-                  />
-                ))}
-            </div>
+            {renderLeaderGrid('top_executive')}
           </section>
 
           {/* Secretarial Positions */}
@@ -301,18 +326,7 @@ export default function Home() {
             <h2 className="text-3xl font-bold text-gray-900 mb-6 pb-3 border-b-4 border-blue-600">
               Secretarial Positions
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {leaders
-                .filter((l) => l.category === 'secretarial')
-                .map((leader) => (
-                  <LeaderCard
-                    key={leader.id}
-                    {...leader}
-                    isSelected={selectedLeader?.id === leader.id}
-                    onClick={() => !hasVoted && handleSelectLeader(leader)}
-                  />
-                ))}
-            </div>
+            {renderLeaderGrid('secretarial')}
           </section>
 
           {/* Executive Members */}
@@ -320,18 +334,7 @@ export default function Home() {
             <h2 className="text-3xl font-bold text-gray-900 mb-6 pb-3 border-b-4 border-green-600">
               Executive Members
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {leaders
-                .filter((l) => l.category === 'executive_member')
-                .map((leader) => (
-                  <LeaderCard
-                    key={leader.id}
-                    {...leader}
-                    isSelected={selectedLeader?.id === leader.id}
-                    onClick={() => !hasVoted && handleSelectLeader(leader)}
-                  />
-                ))}
-            </div>
+            {renderLeaderGrid('executive_member')}
           </section>
         </div>
       </div>
