@@ -12,7 +12,7 @@ import {
   hashFingerprint,
   getOrCreateVisitorId,
 } from '@/lib/fingerprint';
-import { loadTurnstileScript, getTurnstileToken, resetTurnstile } from '@/lib/turnstile';
+import { loadTurnstileScript, renderTurnstile, getTurnstileToken, resetTurnstile } from '@/lib/turnstile';
 
 interface Leader {
   id: string;
@@ -45,6 +45,8 @@ export default function Home() {
     message: '',
   });
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [turnstileVerified, setTurnstileVerified] = useState(false);
+  const [turnstileWidgetId, setTurnstileWidgetId] = useState<string>('');
 
   // Load leaders data
   useEffect(() => {
@@ -98,15 +100,19 @@ export default function Home() {
     setShowModal(true);
     setRating(3);
     setSubmission({ loading: false, error: null, success: false, message: '' });
+    setTurnstileVerified(false);
+    setTurnstileWidgetId('');
 
-    // Render Turnstile in modal
+    // Render Turnstile in modal (delay ensures the container div exists in the DOM)
     setTimeout(() => {
       const containerId = 'turnstile-container';
       if (document.getElementById(containerId)) {
-        window.turnstile?.render(containerId, {
-          sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-          theme: 'light',
-        });
+        const widgetId = renderTurnstile(
+          containerId,
+          () => setTurnstileVerified(true),
+          () => setTurnstileVerified(false)
+        );
+        setTurnstileWidgetId(widgetId);
       }
     }, 100);
   };
@@ -114,7 +120,9 @@ export default function Home() {
   const handleCloseModal = () => {
     setShowModal(false);
     setSelectedLeader(null);
-    resetTurnstile();
+    resetTurnstile(turnstileWidgetId);
+    setTurnstileVerified(false);
+    setTurnstileWidgetId('');
     setSubmission({ loading: false, error: null, success: false, message: '' });
   };
 
@@ -126,8 +134,8 @@ export default function Home() {
 
     try {
       // Get Turnstile token
-      const turnstileToken = getTurnstileToken();
-      if (!turnstileToken) {
+      const turnstileToken = getTurnstileToken(turnstileWidgetId);
+      if (!turnstileVerified || !turnstileToken) {
         setSubmission({
           loading: false,
           error: 'Please complete the verification',
@@ -385,10 +393,14 @@ export default function Home() {
                   {/* Submit Button */}
                   <button
                     onClick={handleSubmitRating}
-                    disabled={submission.loading || !getTurnstileToken()}
+                    disabled={submission.loading || !turnstileVerified}
                     className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 rounded-xl hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {submission.loading ? 'Submitting...' : 'Submit Rating'}
+                    {submission.loading
+                      ? 'Submitting...'
+                      : turnstileVerified
+                      ? 'Submit Rating'
+                      : 'Complete verification above'}
                   </button>
 
                   {/* Privacy Notice */}
@@ -408,4 +420,4 @@ export default function Home() {
       </div>
     </div>
   );
-        }
+}
