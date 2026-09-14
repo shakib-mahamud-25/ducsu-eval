@@ -14,6 +14,7 @@ interface LeaderCardProps {
   score?: number;
   votes?: number;
   isSelected?: boolean;
+  alreadyVoted?: boolean;
   onClick?: () => void;
   showScore?: boolean;
 }
@@ -28,6 +29,7 @@ export default function LeaderCard({
   score = 0,
   votes = 0,
   isSelected = false,
+  alreadyVoted = false,
   onClick,
   showScore = true,
 }: LeaderCardProps) {
@@ -62,10 +64,12 @@ export default function LeaderCard({
   return (
     <div
       data-leader-id={id}
-      onClick={onClick}
-      className={`group relative overflow-hidden rounded-2xl bg-white shadow-lg transition-all duration-300 hover:shadow-2xl cursor-pointer ${
-        isSelected ? 'ring-4 ring-purple-500 scale-105' : 'hover:scale-105'
-      }`}
+      onClick={alreadyVoted ? undefined : onClick}
+      className={`group relative overflow-hidden rounded-2xl bg-white shadow-lg transition-all duration-300 ${
+        alreadyVoted
+          ? 'opacity-75 cursor-default'
+          : 'hover:shadow-2xl cursor-pointer hover:scale-105'
+      } ${isSelected ? 'ring-4 ring-purple-500 scale-105' : ''}`}
     >
       {/* Background gradient overlay */}
       <div
@@ -103,10 +107,13 @@ export default function LeaderCard({
             {getCategoryLabel()}
           </div>
 
-          {/* Selection Indicator */}
-          {isSelected && (
-            <div className="absolute top-3 left-3 bg-green-500 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg">
-              ✓
+          {/* Already Voted Indicator */}
+          {alreadyVoted && (
+            <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+              <div className="bg-green-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-semibold text-sm">
+                <span>✓</span>
+                <span>Rated</span>
+              </div>
             </div>
           )}
         </div>
