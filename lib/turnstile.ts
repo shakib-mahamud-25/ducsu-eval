@@ -27,10 +27,10 @@ export const renderTurnstile = (
   return window.turnstile.render(containerId, {
     sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
     theme: 'light',
-    onSuccess: (token: string) => {
+    callback: (token: string) => {
       onSuccess?.(token);
     },
-    onError: () => {
+    'error-callback': () => {
       onError?.();
     },
   });
@@ -38,11 +38,15 @@ export const renderTurnstile = (
 
 export const getTurnstileToken = (widgetId?: string): string => {
   if (!window.turnstile) {
-    console.error('Turnstile not loaded');
     return '';
   }
 
-  return window.turnstile.getResponse(widgetId) || '';
+  try {
+    return window.turnstile.getResponse(widgetId) || '';
+  } catch {
+    // Widget not rendered yet, or already removed - safe to ignore
+    return '';
+  }
 };
 
 export const resetTurnstile = (widgetId?: string): void => {
