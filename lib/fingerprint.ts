@@ -93,6 +93,33 @@ export const clearVoteStatus = (): void => {
   localStorage.removeItem(SUBMISSION_TIME_KEY);
 };
 
+// ============================================
+// PER-LEADER VOTE TRACKING (one vote per leader, up to 28 total)
+// ============================================
+
+const VOTED_LEADERS_KEY = 'ducsu_voted_leaders';
+
+export const getVotedLeaderIds = (): string[] => {
+  try {
+    const raw = localStorage.getItem(VOTED_LEADERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const hasVotedForLeader = (leaderId: string): boolean => {
+  return getVotedLeaderIds().includes(leaderId);
+};
+
+export const markLeaderAsVoted = (leaderId: string): void => {
+  const voted = getVotedLeaderIds();
+  if (!voted.includes(leaderId)) {
+    voted.push(leaderId);
+    localStorage.setItem(VOTED_LEADERS_KEY, JSON.stringify(voted));
+  }
+};
+
 export const getSubmissionTime = (): number | null => {
   const time = localStorage.getItem(SUBMISSION_TIME_KEY);
   return time ? parseInt(time, 10) : null;
