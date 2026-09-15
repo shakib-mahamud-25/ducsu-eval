@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Lora, Inter } from 'next/font/google';
+import AnalyticsInit from '@/components/AnalyticsInit';
 import './globals.css';
 
 const displayFont = Lora({
@@ -38,7 +39,10 @@ export default function RootLayout({
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body className="bg-paper font-sans text-ink">{children}</body>
+      <body className="bg-paper font-sans text-ink">
+        <AnalyticsInit />
+        {children}
+      </body>
     </html>
   );
 }

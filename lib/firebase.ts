@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import {
   getDatabase,
   ref,
@@ -22,10 +23,29 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
 export const database = getDatabase(app);
+
+// ============================================
+// ANALYTICS (browser-only, guarded)
+// ============================================
+// Analytics reads from window/IndexedDB and breaks during Next.js's
+// server-side render, so it can only initialize once we're actually
+// running in a browser. isSupported() also guards against browsers that
+// block the storage Analytics needs (e.g. some private-browsing modes).
+
+let analytics: Analytics | null = null;
+
+export const getAnalyticsInstance = async (): Promise<Analytics | null> => {
+  if (typeof window === 'undefined') return null;
+  if (analytics) return analytics;
+  if (!(await isSupported())) return null;
+  analytics = getAnalytics(app);
+  return analytics;
+};
 
 // ============================================
 // SUBMISSION OPERATIONS
