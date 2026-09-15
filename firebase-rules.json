@@ -30,6 +30,13 @@
       "$flagId": {
         ".validate": "newData.hasChildren(['ip_address', 'count_from_ip', 'fingerprints', 'status', 'admin_note', 'createdAt'])"
       }
+    },
+    "config": {
+      ".read": true,
+      ".write": true,
+      "voting_window": {
+        ".validate": "newData.hasChildren(['isOpen'])"
+      }
     }
   }
 }
