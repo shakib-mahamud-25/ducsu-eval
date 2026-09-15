@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Lora, Inter } from 'next/font/google';
+import { ClerkProvider } from '@clerk/nextjs';
 import AnalyticsInit from '@/components/AnalyticsInit';
 import './globals.css';
 
@@ -34,15 +35,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${displayFont.variable} ${sansFont.variable}`}>
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </head>
-      <body className="bg-paper font-sans text-ink">
-        <AnalyticsInit />
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${displayFont.variable} ${sansFont.variable}`}>
+        <head>
+          <meta charSet="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </head>
+        <body className="bg-paper font-sans text-ink">
+          <AnalyticsInit />
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
