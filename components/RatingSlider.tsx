@@ -34,7 +34,6 @@ export default function RatingSlider({
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // Calculate filled stars
   const fullStars = Math.floor(value);
   const hasHalfStar = value % 1 !== 0;
   const fillPercentage = ((value - 1) / 4) * 100;
@@ -49,7 +48,6 @@ export default function RatingSlider({
 
   return (
     <div className="w-full space-y-5">
-      {/* Star Display */}
       <div className="flex items-center justify-center gap-2">
         <div className="flex gap-1">
           {[1, 2, 3, 4, 5].map((star) => (
@@ -73,7 +71,6 @@ export default function RatingSlider({
         </div>
       </div>
 
-      {/* Score Display */}
       <div className="text-center">
         <div className="font-display text-4xl font-semibold text-navy-800">
           {value.toFixed(1)}
@@ -81,7 +78,6 @@ export default function RatingSlider({
         <p className="text-xs text-navy-400 mt-1 uppercase tracking-wide">{getDescription()}</p>
       </div>
 
-      {/* Slider Container */}
       <div
         ref={sliderRef}
         className="relative w-full h-2 bg-navy-100 rounded-full overflow-hidden"
@@ -112,7 +108,6 @@ export default function RatingSlider({
         />
       </div>
 
-      {/* Labels */}
       <div className="flex justify-between text-xs text-navy-400 px-1">
         <span>Poor</span>
         <span>Average</span>

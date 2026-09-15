@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Shield, LogOut, Loader2, Trash2, Download, Settings, CheckSquare, Square } from 'lucide-react';
+import { Shield, LogOut, Loader2, Trash2, Download, Settings, CheckSquare, Square, Zap, ShieldCheck } from 'lucide-react';
 import {
   getFlaggedSubmissions,
   getLeaderScores,
   getVotingWindowConfig,
   setVotingWindowConfig,
   deleteMultipleFlaggedEntries,
-  LeaderScore,
+  DualTrackLeaderScore,
   VotingWindowConfig,
   FlaggedSubmission,
 } from '@/lib/firebase';
@@ -27,7 +27,7 @@ function AdminDashboardContent() {
 
   const [flaggedRows, setFlaggedRows] = useState<FlaggedRow[]>([]);
   const [selectedFlagIds, setSelectedFlagIds] = useState<Set<string>>(new Set());
-  const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
+  const [leaderScores, setLeaderScores] = useState<Map<string, DualTrackLeaderScore>>(new Map());
   const [votingWindow, setVotingWindowState] = useState<VotingWindowConfig>({
     isOpen: true,
     startTime: null,
@@ -158,15 +158,23 @@ function AdminDashboardContent() {
   };
 
   const exportResults = () => {
-    const results = Array.from(leaderScores.values()).map((score) => ({
-      leaderId: score.leaderId,
-      totalVotes: score.totalVotes,
-      averageScore: score.averageScore.toFixed(2),
-    }));
+    const rows = Array.from(leaderScores.values());
 
     const csv = [
-      ['Leader ID', 'Total Votes', 'Average Score'],
-      ...results.map((r) => [r.leaderId, r.totalVotes, r.averageScore]),
+      [
+        'Leader ID',
+        'Unverified Votes',
+        'Unverified Avg Score',
+        'Verified Votes',
+        'Verified Avg Score',
+      ],
+      ...rows.map((r) => [
+        r.leaderId,
+        r.unverified.totalVotes,
+        r.unverified.averageScore.toFixed(2),
+        r.verified.totalVotes,
+        r.verified.averageScore.toFixed(2),
+      ]),
     ];
 
     const csvContent = csv.map((row) => row.join(',')).join('\n');
@@ -291,6 +299,11 @@ function AdminDashboardContent() {
                   )}
                 </div>
 
+                <p className="text-navy-400 text-xs mb-4">
+                  Fraud flagging applies to unverified (quick vote) submissions only. Verified
+                  DU-email submissions are limited to one per student and don't need IP flagging.
+                </p>
+
                 {flaggedRows.length === 0 ? (
                   <p className="text-navy-400 text-sm">No flagged submissions.</p>
                 ) : (
@@ -349,30 +362,34 @@ function AdminDashboardContent() {
                     className="flex items-center gap-2 bg-navy-700 hover:bg-navy-600 px-4 py-2 rounded-lg transition text-sm"
                   >
                     <Download size={16} />
-                    Export CSV
+                    Export CSV (both tracks)
                   </button>
                 </div>
                 {leaderScores.size === 0 ? (
                   <p className="text-navy-400 text-sm">No votes yet.</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {Array.from(leaderScores.values())
-                      .sort((a, b) => b.averageScore - a.averageScore)
-                      .map((score) => (
-                        <div key={score.leaderId} className="bg-navy-800 rounded-lg p-4 border border-navy-700">
-                          <div className="flex justify-between items-start mb-2">
-                            <p className="font-medium text-sm">{score.leaderId}</p>
-                            <span className="text-gold-400 font-semibold">{score.averageScore.toFixed(2)}/5</span>
-                          </div>
-                          <div className="w-full bg-navy-700 rounded-full h-1.5">
-                            <div
-                              className="bg-gold-500 h-1.5 rounded-full"
-                              style={{ width: `${(score.averageScore / 5) * 100}%` }}
+                      .sort((a, b) => b.unverified.averageScore - a.unverified.averageScore)
+                      .map((entry) => (
+                        <div key={entry.leaderId} className="bg-navy-800 rounded-lg p-4 border border-navy-700">
+                          <p className="font-medium text-sm mb-3">{entry.leaderId}</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <ResultRow
+                              icon={<Zap size={13} className="text-maroon-400" />}
+                              label="Unverified"
+                              score={entry.unverified.averageScore}
+                              votes={entry.unverified.totalVotes}
+                              barColorClass="bg-maroon-500"
+                            />
+                            <ResultRow
+                              icon={<ShieldCheck size={13} className="text-gold-400" />}
+                              label="Verified"
+                              score={entry.verified.averageScore}
+                              votes={entry.verified.totalVotes}
+                              barColorClass="bg-gold-500"
                             />
                           </div>
-                          <p className="text-navy-400 text-xs mt-2">
-                            {score.totalVotes} vote{score.totalVotes !== 1 ? 's' : ''}
-                          </p>
                         </div>
                       ))}
                   </div>
@@ -390,6 +407,41 @@ function AdminDashboardContent() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function ResultRow({
+  icon,
+  label,
+  score,
+  votes,
+  barColorClass,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  score: number;
+  votes: number;
+  barColorClass: string;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-1">
+        <div className="flex items-center gap-1.5">
+          {icon}
+          <span className="text-navy-300 text-xs font-medium">{label}</span>
+        </div>
+        <span className="text-paper text-sm font-semibold">{score.toFixed(2)}/5</span>
+      </div>
+      <div className="w-full bg-navy-700 rounded-full h-1.5">
+        <div
+          className={`h-1.5 rounded-full ${barColorClass}`}
+          style={{ width: `${(score / 5) * 100}%` }}
+        />
+      </div>
+      <p className="text-navy-400 text-xs mt-1">
+        {votes} vote{votes !== 1 ? 's' : ''}
+      </p>
     </div>
   );
 }
@@ -438,7 +490,8 @@ function VotingWindowPanel({
 
         <p className="text-navy-400 text-xs leading-relaxed">
           This takes effect immediately for all students — no redeploy needed. When closed,
-          the evaluation button is hidden and the server also rejects new submissions directly.
+          the evaluation button is hidden and the server also rejects new submissions directly,
+          for both verified and unverified tracks.
         </p>
 
         <button

@@ -8,7 +8,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Deep navy — primary institutional color, drawn from the DU seal
         navy: {
           50: '#EEF1F6',
           100: '#D3DAE7',
@@ -21,7 +20,6 @@ const config: Config = {
           800: '#0F192E',
           900: '#0B1526',
         },
-        // Maroon — single accent, echoes the DU seal's banner
         maroon: {
           50: '#FBEEEF',
           100: '#F1CDD0',
@@ -34,7 +32,6 @@ const config: Config = {
           800: '#3F0F16',
           900: '#2B0A0F',
         },
-        // Gold — reserved for ceremonial / top-3 moments only
         gold: {
           50: '#FDF8E9',
           100: '#F8EABE',

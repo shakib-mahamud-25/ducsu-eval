@@ -26,16 +26,13 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+// Exported so lib/auth.ts can attach Firebase Auth to the same app instance.
+export const app = initializeApp(firebaseConfig);
 export const database = getDatabase(app);
 
 // ============================================
 // ANALYTICS (browser-only, guarded)
 // ============================================
-// Analytics reads from window/IndexedDB and breaks during Next.js's
-// server-side render, so it can only initialize once we're actually
-// running in a browser. isSupported() also guards against browsers that
-// block the storage Analytics needs (e.g. some private-browsing modes).
 
 let analytics: Analytics | null = null;
 
@@ -48,6 +45,15 @@ export const getAnalyticsInstance = async (): Promise<Analytics | null> => {
 };
 
 // ============================================
+// VOTE TRACK TYPE
+// ============================================
+// "unverified" = the original fingerprint/IP/Turnstile flow (includes all
+// pre-existing data via the one-time migration script).
+// "verified" = DU email magic-link authenticated flow.
+
+export type VoteTrack = 'verified' | 'unverified';
+
+// ============================================
 // SUBMISSION OPERATIONS
 // ============================================
 
@@ -56,11 +62,13 @@ export interface Submission {
   leader_id: string;
   score: number;
   createdAt: number;
+  track: VoteTrack;
 }
 
 export const submitRating = async (
   leaderId: string,
-  score: number
+  score: number,
+  track: VoteTrack
 ): Promise<string> => {
   const submissionsRef = ref(database, 'submissions');
   const newRef = push(submissionsRef);
@@ -69,6 +77,7 @@ export const submitRating = async (
     leader_id: leaderId,
     score: parseFloat(score.toFixed(1)),
     createdAt: Date.now(),
+    track,
   };
 
   await set(newRef, submission);
@@ -77,9 +86,9 @@ export const submitRating = async (
 
 // Writes every rating from a completed evaluation session in a single
 // multi-path update, so the whole batch either lands together or not at all.
-// Returns the generated submission IDs in the same order as the input.
 export const batchSubmitRatings = async (
-  ratings: { leaderId: string; score: number }[]
+  ratings: { leaderId: string; score: number }[],
+  track: VoteTrack
 ): Promise<string[]> => {
   const submissionsRef = ref(database, 'submissions');
   const createdAt = Date.now();
@@ -94,6 +103,7 @@ export const batchSubmitRatings = async (
       leader_id: leaderId,
       score: parseFloat(score.toFixed(1)),
       createdAt,
+      track,
     };
   }
 
@@ -102,7 +112,7 @@ export const batchSubmitRatings = async (
 };
 
 // ============================================
-// FRAUD DETECTION OPERATIONS
+// FRAUD DETECTION OPERATIONS (unverified track only)
 // ============================================
 
 export interface FraudRecord {
@@ -139,9 +149,6 @@ export const getSubmissionCountByIp = async (ipAddress: string): Promise<number>
   const snapshot = await get(q);
   if (!snapshot.exists()) return 0;
 
-  // Count DISTINCT devices (fingerprints) from this IP, not raw submission count.
-  // One legitimate voter can submit up to 28 times (once per leader), so counting
-  // raw submissions would falsely flag a single real person as many "voters".
   const uniqueFingerprints = new Set<string>();
   snapshot.forEach((child) => {
     const record = child.val();
@@ -154,7 +161,7 @@ export const getSubmissionCountByIp = async (ipAddress: string): Promise<number>
 };
 
 // ============================================
-// FLAGGED SUBMISSIONS OPERATIONS
+// FLAGGED SUBMISSIONS OPERATIONS (unverified track only)
 // ============================================
 
 export interface FlaggedSubmission {
@@ -202,13 +209,30 @@ export const getFlaggedSubmissions = async (): Promise<Map<string, FlaggedSubmis
 };
 
 // ============================================
-// VOTING WINDOW CONFIG (admin-editable, replaces env vars)
+// VERIFIED EMAIL DEDUP (one verified submission per DU email, ever)
+// ============================================
+// Only the SHA-256 hash of the email is stored — never the raw address —
+// and it is never linked to the scores that email holder submitted.
+
+export const hasEmailAlreadyVoted = async (emailHash: string): Promise<boolean> => {
+  const entryRef = ref(database, `voted_emails/${emailHash}`);
+  const snapshot = await get(entryRef);
+  return snapshot.exists();
+};
+
+export const markEmailAsVoted = async (emailHash: string): Promise<void> => {
+  const entryRef = ref(database, `voted_emails/${emailHash}`);
+  await set(entryRef, { submittedAt: Date.now() });
+};
+
+// ============================================
+// VOTING WINDOW CONFIG
 // ============================================
 
 export interface VotingWindowConfig {
   isOpen: boolean;
-  startTime: number | null; // epoch ms, optional informational display
-  endTime: number | null; // epoch ms, optional informational display
+  startTime: number | null;
+  endTime: number | null;
 }
 
 const DEFAULT_VOTING_WINDOW: VotingWindowConfig = {
@@ -239,19 +263,12 @@ export const setVotingWindowConfig = async (config: VotingWindowConfig): Promise
 };
 
 // ============================================
-// FLAGGED SUBMISSION DELETION (admin fraud review)
+// FLAGGED SUBMISSION DELETION (admin fraud review, unverified track only)
 // ============================================
-// Scoped deliberately to flagged/suspicious IPs only — this is not a
-// general-purpose "browse every voter" capability. It deletes the
-// fraud_detection records tied to a flagged IP plus the flag entry itself.
-// It does not delete the anonymous rating submissions those records may be
-// associated with, since submissions are not linked back to any device.
 
 export const deleteFlaggedEntry = async (flagId: string, ipAddress: string): Promise<void> => {
-  // Remove the flag record
   await remove(ref(database, `flagged_submissions/${flagId}`));
 
-  // Remove matching fraud_detection records for that IP
   const fraudRef = ref(database, 'fraud_detection');
   const q = query(fraudRef, orderByChild('ip_address'), equalTo(ipAddress));
   const snapshot = await get(q);
@@ -274,7 +291,7 @@ export const deleteMultipleFlaggedEntries = async (
 };
 
 // ============================================
-// RESULTS / ANALYTICS OPERATIONS
+// RESULTS / ANALYTICS OPERATIONS — split by track
 // ============================================
 
 export interface LeaderScore {
@@ -282,96 +299,91 @@ export interface LeaderScore {
   totalVotes: number;
   averageScore: number;
   scoreDistribution: {
-    [key: string]: number; // "1.0": 5, "1.1": 3, etc.
+    [key: string]: number;
   };
 }
 
-export const getLeaderScores = async (): Promise<Map<string, LeaderScore>> => {
+// One entry per leader, holding BOTH tracks side by side. This is what
+// components consume — no need to juggle two separate Maps in the UI layer.
+export interface DualTrackLeaderScore {
+  leaderId: string;
+  unverified: LeaderScore;
+  verified: LeaderScore;
+}
+
+const emptyLeaderScore = (leaderId: string): LeaderScore => ({
+  leaderId,
+  totalVotes: 0,
+  averageScore: 0,
+  scoreDistribution: {},
+});
+
+const accumulate = (
+  scoresByLeader: Map<string, DualTrackLeaderScore>,
+  submission: Submission
+) => {
+  const leaderId = submission.leader_id;
+  const track: VoteTrack = submission.track === 'verified' ? 'verified' : 'unverified';
+
+  if (!scoresByLeader.has(leaderId)) {
+    scoresByLeader.set(leaderId, {
+      leaderId,
+      unverified: emptyLeaderScore(leaderId),
+      verified: emptyLeaderScore(leaderId),
+    });
+  }
+
+  const entry = scoresByLeader.get(leaderId)!;
+  const bucket = entry[track];
+  bucket.totalVotes += 1;
+
+  const scoreKey = submission.score.toFixed(1);
+  bucket.scoreDistribution[scoreKey] = (bucket.scoreDistribution[scoreKey] || 0) + 1;
+};
+
+const finalizeAverages = (scoresByLeader: Map<string, DualTrackLeaderScore>) => {
+  scoresByLeader.forEach((entry) => {
+    (['unverified', 'verified'] as const).forEach((track) => {
+      const bucket = entry[track];
+      let total = 0;
+      Object.entries(bucket.scoreDistribution).forEach(([score, count]) => {
+        total += parseFloat(score) * count;
+      });
+      bucket.averageScore = bucket.totalVotes > 0 ? total / bucket.totalVotes : 0;
+    });
+  });
+};
+
+export const getLeaderScores = async (): Promise<Map<string, DualTrackLeaderScore>> => {
   const submissionsRef = ref(database, 'submissions');
   const snapshot = await get(submissionsRef);
 
-  const scoresByLeader = new Map<string, LeaderScore>();
+  const scoresByLeader = new Map<string, DualTrackLeaderScore>();
 
   if (snapshot.exists()) {
     snapshot.forEach((childSnapshot) => {
-      const submission = childSnapshot.val() as Submission;
-      const leaderId = submission.leader_id;
-      const score = submission.score;
-
-      if (!scoresByLeader.has(leaderId)) {
-        scoresByLeader.set(leaderId, {
-          leaderId,
-          totalVotes: 0,
-          averageScore: 0,
-          scoreDistribution: {},
-        });
-      }
-
-      const leaderData = scoresByLeader.get(leaderId)!;
-      leaderData.totalVotes += 1;
-
-      const scoreKey = score.toFixed(1);
-      leaderData.scoreDistribution[scoreKey] =
-        (leaderData.scoreDistribution[scoreKey] || 0) + 1;
+      accumulate(scoresByLeader, childSnapshot.val() as Submission);
     });
-
-    // Calculate averages
-    scoresByLeader.forEach((leaderData) => {
-      let totalScore = 0;
-      Object.entries(leaderData.scoreDistribution).forEach(([score, count]) => {
-        totalScore += parseFloat(score) * count;
-      });
-      leaderData.averageScore = leaderData.totalVotes > 0
-        ? totalScore / leaderData.totalVotes
-        : 0;
-    });
+    finalizeAverages(scoresByLeader);
   }
 
   return scoresByLeader;
 };
 
-// Real-time listener for live results
+// Real-time listener for live results, split by track
 export const listenToScores = (
-  callback: (scores: Map<string, LeaderScore>) => void
+  callback: (scores: Map<string, DualTrackLeaderScore>) => void
 ): Unsubscribe => {
   const submissionsRef = ref(database, 'submissions');
 
-  return onValue(submissionsRef, async (snapshot) => {
-    const scoresByLeader = new Map<string, LeaderScore>();
+  return onValue(submissionsRef, (snapshot) => {
+    const scoresByLeader = new Map<string, DualTrackLeaderScore>();
 
     if (snapshot.exists()) {
       snapshot.forEach((childSnapshot) => {
-        const submission = childSnapshot.val() as Submission;
-        const leaderId = submission.leader_id;
-        const score = submission.score;
-
-        if (!scoresByLeader.has(leaderId)) {
-          scoresByLeader.set(leaderId, {
-            leaderId,
-            totalVotes: 0,
-            averageScore: 0,
-            scoreDistribution: {},
-          });
-        }
-
-        const leaderData = scoresByLeader.get(leaderId)!;
-        leaderData.totalVotes += 1;
-
-        const scoreKey = score.toFixed(1);
-        leaderData.scoreDistribution[scoreKey] =
-          (leaderData.scoreDistribution[scoreKey] || 0) + 1;
+        accumulate(scoresByLeader, childSnapshot.val() as Submission);
       });
-
-      // Calculate averages
-      scoresByLeader.forEach((leaderData) => {
-        let totalScore = 0;
-        Object.entries(leaderData.scoreDistribution).forEach(([score, count]) => {
-          totalScore += parseFloat(score) * count;
-        });
-        leaderData.averageScore = leaderData.totalVotes > 0
-          ? totalScore / leaderData.totalVotes
-          : 0;
-      });
+      finalizeAverages(scoresByLeader);
     }
 
     callback(scoresByLeader);

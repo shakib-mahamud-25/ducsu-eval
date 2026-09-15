@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, SkipForward, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, SkipForward, X, Loader2, CheckCircle, AlertCircle, ShieldCheck, Zap, Mail } from 'lucide-react';
 import Image from 'next/image';
 import RatingSlider from './RatingSlider';
 import {
@@ -11,6 +11,8 @@ import {
   markLeaderSkipped,
   getDraftPosition,
   setDraftPosition,
+  getDraftTrack,
+  setDraftTrack,
   clearDraftState,
   generateDeviceFingerprint,
   hashFingerprint,
@@ -18,6 +20,10 @@ import {
   markLeaderAsVoted,
 } from '@/lib/fingerprint';
 import { loadTurnstileScript, renderTurnstile, getTurnstileToken, resetTurnstile } from '@/lib/turnstile';
+import { sendVerificationLink, getCurrentUser, hashEmail } from '@/lib/auth';
+import { VoteTrack } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/auth';
 
 interface Leader {
   id: string;
@@ -35,12 +41,19 @@ interface EvaluationFlowProps {
   onComplete: () => void;
 }
 
-type Screen = 'rating' | 'summary' | 'submitting';
+type Screen = 'choose-track' | 'email-entry' | 'email-sent' | 'rating' | 'summary' | 'submitting';
 
 export default function EvaluationFlow({ leaders, onClose, onComplete }: EvaluationFlowProps) {
+  const [track, setTrack] = useState<VoteTrack | null>(() => getDraftTrack());
+  const [screen, setScreen] = useState<Screen>(() => {
+    const existingTrack = getDraftTrack();
+    if (!existingTrack) return 'choose-track';
+    if (existingTrack === 'verified' && !getCurrentUser()) return 'choose-track';
+    return 'rating';
+  });
+
   const [position, setPosition] = useState(() => getDraftPosition());
   const [ratings, setRatings] = useState<Record<string, number>>(() => getDraftRatings());
-  const [screen, setScreen] = useState<Screen>('rating');
   const [currentScore, setCurrentScore] = useState(3);
   const [imageError, setImageError] = useState(false);
   const [turnstileVerified, setTurnstileVerified] = useState(false);
@@ -48,11 +61,29 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // Email-entry state (verified track only)
+  const [emailInput, setEmailInput] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [sendingLink, setSendingLink] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState(!!getCurrentUser());
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsSignedIn(!!user);
+      // If a verified user completes sign-in (e.g. returning from /verify
+      // in the same tab context) while this flow is mounted, move them
+      // straight into rating.
+      if (user && track === 'verified' && screen !== 'rating' && screen !== 'summary' && screen !== 'submitting') {
+        setScreen('rating');
+      }
+    });
+    return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track]);
+
   const currentLeader = leaders[position];
   const ratedCount = Object.keys(ratings).length;
 
-  // Preload the current leader's existing rating (or default to 3) whenever
-  // the position changes — this is what makes "go back and change" work.
   useEffect(() => {
     if (currentLeader) {
       setCurrentScore(ratings[currentLeader.id] ?? 3);
@@ -74,12 +105,36 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
           return;
         }
       }
-      // Nothing left ahead — check if everything is actually rated
-      const allRated = leaders.every((l) => l.id in latestRatings);
-      setScreen(allRated ? 'summary' : 'summary');
+      setScreen('summary');
     },
     [leaders]
   );
+
+  // ============ TRACK SELECTION ============
+  const handleChooseTrack = (chosen: VoteTrack) => {
+    setTrack(chosen);
+    setDraftTrack(chosen);
+    if (chosen === 'unverified') {
+      setScreen('rating');
+    } else {
+      setScreen(getCurrentUser() ? 'rating' : 'email-entry');
+    }
+  };
+
+  // ============ EMAIL ENTRY (verified track) ============
+  const handleSendLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailError(null);
+    setSendingLink(true);
+    try {
+      await sendVerificationLink(emailInput);
+      setScreen('email-sent');
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Could not send the verification link.');
+    } finally {
+      setSendingLink(false);
+    }
+  };
 
   const handleRateAndContinue = () => {
     if (!currentLeader) return;
@@ -113,8 +168,9 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
 
   const unratedLeaders = leaders.filter((l) => !(l.id in ratings));
 
-  // Render Turnstile once, on the summary screen, right before final submit
+  // Render Turnstile only for the unverified track, on the summary screen
   useEffect(() => {
+    if (track !== 'unverified') return;
     if (screen !== 'summary' || unratedLeaders.length > 0) return;
 
     let cancelled = false;
@@ -141,64 +197,194 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
     return () => {
       cancelled = true;
     };
-  }, [screen, unratedLeaders.length]);
+  }, [screen, unratedLeaders.length, track]);
 
   const handleFinalSubmit = async () => {
     setSubmitError(null);
-    const token = getTurnstileToken(turnstileWidgetId);
-    if (!turnstileVerified || !token) {
-      setSubmitError('Please complete the verification above.');
+
+    if (track === 'unverified') {
+      const token = getTurnstileToken(turnstileWidgetId);
+      if (!turnstileVerified || !token) {
+        setSubmitError('Please complete the verification above.');
+        return;
+      }
+
+      setScreen('submitting');
+      try {
+        const deviceFP = await generateDeviceFingerprint();
+        const fpHash = hashFingerprint(deviceFP.fingerprintId);
+        const visitorId = getOrCreateVisitorId();
+
+        const response = await fetch('/api/submit-rating', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ratings: Object.entries(ratings).map(([leaderId, score]) => ({ leaderId, score })),
+            track: 'unverified',
+            turnstileToken: token,
+            fingerprintHash: fpHash,
+            visitorId,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Submission failed');
+
+        Object.keys(ratings).forEach((leaderId) => markLeaderAsVoted(leaderId));
+        clearDraftState();
+        setSubmitSuccess(true);
+        setTimeout(() => onComplete(), 2000);
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : 'Something went wrong. Your ratings are still saved on this device — please try submitting again.'
+        );
+        setTurnstileVerified(false);
+        setScreen('summary');
+        resetTurnstile(turnstileWidgetId);
+      }
+      return;
+    }
+
+    // Verified track
+    const user = getCurrentUser();
+    if (!user) {
+      setSubmitError('Your session expired. Please verify your email again.');
+      setScreen('email-entry');
       return;
     }
 
     setScreen('submitting');
-
     try {
-      const deviceFP = await generateDeviceFingerprint();
-      const fpHash = hashFingerprint(deviceFP.fingerprintId);
-      const visitorId = getOrCreateVisitorId();
+      const idToken = await user.getIdToken();
 
       const response = await fetch('/api/submit-rating', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ratings: Object.entries(ratings).map(([leaderId, score]) => ({ leaderId, score })),
-          turnstileToken: token,
-          fingerprintHash: fpHash,
-          visitorId,
+          track: 'verified',
+          firebaseIdToken: idToken,
         }),
       });
 
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Submission failed');
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Submission failed');
-      }
-
-      // Mark every rated leader as voted on this device, then clear the draft
-      Object.keys(ratings).forEach((leaderId) => markLeaderAsVoted(leaderId));
       clearDraftState();
-
       setSubmitSuccess(true);
-      setTimeout(() => {
-        onComplete();
-      }, 2000);
+      setTimeout(() => onComplete(), 2000);
     } catch (error) {
-      // Restore the UI first. resetTurnstile is now safe to call (it
-      // swallows its own errors), but we still sequence it last on
-      // purpose: if anything unexpected ever throws during cleanup, the
-      // person has already been taken off the frozen "Saving…" screen
-      // and shown an error instead of being stuck indefinitely.
       setSubmitError(
         error instanceof Error
           ? error.message
           : 'Something went wrong. Your ratings are still saved on this device — please try submitting again.'
       );
-      setTurnstileVerified(false);
       setScreen('summary');
-      resetTurnstile(turnstileWidgetId);
     }
   };
+
+  // ============ CHOOSE TRACK ============
+  if (screen === 'choose-track') {
+    return (
+      <FlowShell onClose={onClose}>
+        <div className="p-6 sm:p-8">
+          <h2 className="font-display text-2xl text-navy-800 mb-1">How would you like to vote?</h2>
+          <p className="text-navy-500 text-sm mb-6">
+            Both options are anonymous. Choose the one that fits you.
+          </p>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => handleChooseTrack('unverified')}
+              className="w-full text-left border border-navy-200 rounded-xl p-4 hover:border-maroon-300 hover:bg-maroon-50 transition flex gap-3"
+            >
+              <Zap size={22} className="text-navy-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-navy-800">Quick vote</p>
+                <p className="text-navy-500 text-sm mt-0.5">
+                  No login needed. Takes a moment, protected by standard bot and duplicate checks.
+                </p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleChooseTrack('verified')}
+              className="w-full text-left border border-navy-200 rounded-xl p-4 hover:border-maroon-300 hover:bg-maroon-50 transition flex gap-3"
+            >
+              <ShieldCheck size={22} className="text-navy-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-navy-800">Verified vote (DU email)</p>
+                <p className="text-navy-500 text-sm mt-0.5">
+                  Sign in with your DU student email for a verified result. Your identity is
+                  never linked to your ratings — only used to confirm one vote per student.
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </FlowShell>
+    );
+  }
+
+  // ============ EMAIL ENTRY ============
+  if (screen === 'email-entry') {
+    return (
+      <FlowShell onClose={onClose}>
+        <div className="p-6 sm:p-8">
+          <h2 className="font-display text-2xl text-navy-800 mb-1">Verify your DU email</h2>
+          <p className="text-navy-500 text-sm mb-6">
+            We'll send a sign-in link to your official DU student email
+            (e.g. name-id@dept.du.ac.bd). Tap it to continue — no password needed.
+          </p>
+
+          <form onSubmit={handleSendLink} className="space-y-3">
+            <input
+              type="email"
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="name-id@dept.du.ac.bd"
+              className="w-full border border-navy-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-maroon-400"
+            />
+            {emailError && <p className="text-maroon-600 text-sm">{emailError}</p>}
+            <button
+              type="submit"
+              disabled={sendingLink}
+              className="w-full bg-maroon-600 text-white font-semibold py-3 rounded-lg hover:bg-maroon-700 transition disabled:opacity-50"
+            >
+              {sendingLink ? 'Sending…' : 'Send verification link'}
+            </button>
+          </form>
+
+          <button
+            onClick={() => setScreen('choose-track')}
+            className="w-full text-navy-400 text-sm mt-4 hover:text-navy-600 transition"
+          >
+            ← Back
+          </button>
+        </div>
+      </FlowShell>
+    );
+  }
+
+  // ============ EMAIL SENT ============
+  if (screen === 'email-sent') {
+    return (
+      <FlowShell onClose={onClose}>
+        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+          <Mail className="w-12 h-12 text-navy-500 mb-4" />
+          <h2 className="font-display text-2xl text-navy-800 mb-2">Check your inbox</h2>
+          <p className="text-navy-500 text-sm mb-1">We sent a sign-in link to</p>
+          <p className="text-navy-800 font-medium mb-4">{emailInput}</p>
+          <p className="text-navy-400 text-xs max-w-xs">
+            Open it on this device to come straight back here. If it lands on another device,
+            you'll just be asked to confirm your email once more.
+          </p>
+        </div>
+      </FlowShell>
+    );
+  }
 
   // ============ SUBMITTING / SUCCESS ============
   if (screen === 'submitting') {
@@ -224,19 +410,22 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
 
   // ============ SUMMARY ============
   if (screen === 'summary') {
+    const readyToSubmit = unratedLeaders.length === 0;
+    const canSubmit = track === 'unverified' ? turnstileVerified : isSignedIn;
+
     return (
       <FlowShell onClose={onClose}>
         <div className="p-6 sm:p-8">
           <h2 className="font-display text-2xl text-navy-800 mb-1">
-            {unratedLeaders.length === 0 ? 'Ready to submit' : 'Almost there'}
+            {readyToSubmit ? 'Ready to submit' : 'Almost there'}
           </h2>
           <p className="text-navy-500 text-sm mb-6">
-            {unratedLeaders.length === 0
+            {readyToSubmit
               ? `You've rated all ${leaders.length} leaders. Review below, then submit once.`
               : `You've rated ${ratedCount} of ${leaders.length}. Tap any leader below to rate them.`}
           </p>
 
-          {unratedLeaders.length > 0 && (
+          {!readyToSubmit && (
             <div className="space-y-2 mb-6 max-h-72 overflow-y-auto">
               {unratedLeaders.map((leader) => (
                 <button
@@ -254,7 +443,7 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
             </div>
           )}
 
-          {unratedLeaders.length === 0 && (
+          {readyToSubmit && (
             <>
               {submitError && (
                 <div className="bg-maroon-50 border border-maroon-200 rounded-lg p-3 mb-4 flex items-start gap-2">
@@ -263,17 +452,26 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
                 </div>
               )}
 
-              <p className="text-navy-500 text-xs mb-3">
-                One last check to confirm you're not a bot, then your evaluation is submitted.
-              </p>
-              <div id="turnstile-final-container" className="flex justify-center mb-4" />
+              {track === 'unverified' ? (
+                <>
+                  <p className="text-navy-500 text-xs mb-3">
+                    One last check to confirm you're not a bot, then your evaluation is submitted.
+                  </p>
+                  <div id="turnstile-final-container" className="flex justify-center mb-4" />
+                </>
+              ) : (
+                <p className="text-navy-500 text-xs mb-3">
+                  Signed in as a verified DU student. Submitting will record your evaluation as
+                  verified and cannot be repeated with the same email.
+                </p>
+              )}
 
               <button
                 onClick={handleFinalSubmit}
-                disabled={!turnstileVerified}
+                disabled={!canSubmit}
                 className="w-full bg-maroon-600 text-white font-semibold py-3 rounded-lg hover:bg-maroon-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {turnstileVerified ? 'Submit evaluation' : 'Complete verification above'}
+                {canSubmit ? 'Submit evaluation' : 'Complete verification above'}
               </button>
             </>
           )}
@@ -297,7 +495,6 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
 
   return (
     <FlowShell onClose={onClose}>
-      {/* Progress bar */}
       <div className="px-6 sm:px-8 pt-5">
         <div className="flex items-center justify-between text-xs text-navy-400 mb-2">
           <span>Leader {position + 1} of {leaders.length}</span>
@@ -312,7 +509,6 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
       </div>
 
       <div className="p-6 sm:p-8">
-        {/* Leader identity */}
         <div className="flex items-center gap-4 mb-6">
           <div className="relative w-16 h-16 rounded-full overflow-hidden bg-navy-100 flex-shrink-0 ring-2 ring-navy-100">
             {!imageError ? (

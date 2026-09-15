@@ -1,4 +1,3 @@
-// Client-side: Expose window.grecaptcha for Turnstile widget
 declare global {
   interface Window {
     turnstile?: {
@@ -9,10 +8,6 @@ declare global {
     };
   }
 }
-
-// ============================================
-// CLIENT-SIDE TURNSTILE UTILITIES
-// ============================================
 
 export const renderTurnstile = (
   containerId: string,
@@ -44,17 +39,10 @@ export const getTurnstileToken = (widgetId?: string): string => {
   try {
     return window.turnstile.getResponse(widgetId) || '';
   } catch {
-    // Widget not rendered yet, or already removed - safe to ignore
     return '';
   }
 };
 
-// Guarded against the widget already being gone (e.g. the modal was closed,
-// or this is called a second time after the container was unmounted).
-// Turnstile throws in that case, and previously that throw would escape
-// uncaught from inside a catch block in EvaluationFlow, which stopped the
-// rest of the error-handling code from running and left the UI stuck on
-// the "Saving your evaluation…" screen forever. This must never throw.
 export const resetTurnstile = (widgetId?: string): void => {
   try {
     if (window.turnstile && widgetId) {
@@ -74,10 +62,6 @@ export const removeTurnstile = (widgetId?: string): void => {
     console.warn('Turnstile remove skipped (widget likely already gone):', err);
   }
 };
-
-// ============================================
-// SERVER-SIDE TURNSTILE VERIFICATION
-// ============================================
 
 export interface TurnstileVerifyResponse {
   success: boolean;
@@ -120,10 +104,6 @@ export const verifyTurnstileToken = async (
     };
   }
 };
-
-// ============================================
-// TURNSTILE SCRIPT LOADER
-// ============================================
 
 export const loadTurnstileScript = (): Promise<void> => {
   return new Promise((resolve, reject) => {

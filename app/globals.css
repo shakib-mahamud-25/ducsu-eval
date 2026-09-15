@@ -20,7 +20,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Range slider custom styles */
 input[type='range'] {
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -72,7 +71,6 @@ input[type='range']::-moz-range-thumb:active {
   background: rgb(122, 31, 43);
 }
 
-/* Smooth animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -103,7 +101,6 @@ input[type='range']::-moz-range-thumb:active {
   animation: slideIn 0.3s ease-out;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -122,7 +119,6 @@ input[type='range']::-moz-range-thumb:active {
   background: rgba(20, 33, 61, 0.55);
 }
 
-/* Modal animations */
 @keyframes modalSlideUp {
   from {
     opacity: 0;

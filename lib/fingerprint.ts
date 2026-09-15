@@ -1,8 +1,8 @@
 import * as FingerprintJS from '@fingerprintjs/fingerprintjs';
+import { VoteTrack } from './firebase';
 
 let fpPromise: Promise<FingerprintJS.Agent> | null = null;
 
-// Initialize FingerprintJS on first call
 export const initializeFingerprint = async (): Promise<FingerprintJS.Agent> => {
   if (!fpPromise) {
     fpPromise = FingerprintJS.load();
@@ -10,7 +10,6 @@ export const initializeFingerprint = async (): Promise<FingerprintJS.Agent> => {
   return fpPromise;
 };
 
-// Get unique browser fingerprint
 export const getFingerprint = async (): Promise<string> => {
   const fp = await initializeFingerprint();
   const result = await fp.get();
@@ -22,7 +21,6 @@ export const getFingerprint = async (): Promise<string> => {
 // ============================================
 
 export const detectIncognitoMode = async (): Promise<boolean> => {
-  // Method 1: IndexedDB quota test
   try {
     const test = indexedDB.open('test');
     return new Promise((resolve) => {
@@ -33,7 +31,6 @@ export const detectIncognitoMode = async (): Promise<boolean> => {
       };
 
       test.onerror = () => {
-        // IndexedDB throws error in private mode
         isIncognito = true;
         resolve(true);
       };
@@ -47,7 +44,6 @@ export const detectIncognitoMode = async (): Promise<boolean> => {
   }
 };
 
-// Method 2: localStorage quota check (fallback)
 export const detectIncognitoModeAlt = (): boolean => {
   try {
     const test = '__INCOGNITO_TEST__';
@@ -55,7 +51,7 @@ export const detectIncognitoModeAlt = (): boolean => {
     localStorage.removeItem(test);
     return false;
   } catch {
-    return true; // Likely incognito
+    return true;
   }
 };
 
@@ -71,7 +67,6 @@ export const getOrCreateVisitorId = (): string => {
   let visitorId = localStorage.getItem(VISITOR_ID_KEY);
 
   if (!visitorId) {
-    // Create new visitor ID based on fingerprint + timestamp
     visitorId = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     localStorage.setItem(VISITOR_ID_KEY, visitorId);
   }
@@ -96,6 +91,10 @@ export const clearVoteStatus = (): void => {
 // ============================================
 // PER-LEADER VOTE TRACKING (one vote per leader, up to 28 total)
 // ============================================
+// This tracks "voted on this device" for the unverified track. The
+// verified track's "already voted" check lives server-side against the
+// hashed email instead (see lib/auth.ts + lib/firebase.ts), since a
+// verified vote must be tied to identity, not device.
 
 const VOTED_LEADERS_KEY = 'ducsu_voted_leaders';
 
@@ -129,13 +128,14 @@ export const getSubmissionTime = (): number | null => {
 // IN-PROGRESS DRAFT TRACKING (sequential batch-submit flow)
 // ============================================
 // Ratings are held here for the whole 28-leader pass and are only written to
-// Firebase once, at final submit. This lets a student go back and change a
-// rating, skip a leader and return to it, or close the tab and resume later
-// — all before anything is actually recorded as a vote.
+// Firebase once, at final submit. Now also remembers which track ("verified"
+// or "unverified") the student picked at the start of this session, so the
+// choice survives a page refresh mid-flow.
 
 const DRAFT_RATINGS_KEY = 'ducsu_draft_ratings';
 const DRAFT_SKIPPED_KEY = 'ducsu_draft_skipped';
 const DRAFT_POSITION_KEY = 'ducsu_draft_position';
+const DRAFT_TRACK_KEY = 'ducsu_draft_track';
 
 export interface DraftRatings {
   [leaderId: string]: number;
@@ -155,7 +155,6 @@ export const setDraftRating = (leaderId: string, score: number): void => {
   drafts[leaderId] = score;
   localStorage.setItem(DRAFT_RATINGS_KEY, JSON.stringify(drafts));
 
-  // Rating a leader clears any "skipped" flag on them
   const skipped = getSkippedLeaderIds().filter((id) => id !== leaderId);
   localStorage.setItem(DRAFT_SKIPPED_KEY, JSON.stringify(skipped));
 };
@@ -186,13 +185,22 @@ export const setDraftPosition = (index: number): void => {
   localStorage.setItem(DRAFT_POSITION_KEY, index.toString());
 };
 
-// Clears all in-progress draft state. Call this after a successful final
-// submit (the draft has become real votes) or if the student wants to
-// restart their evaluation from scratch.
+export const getDraftTrack = (): VoteTrack | null => {
+  const raw = localStorage.getItem(DRAFT_TRACK_KEY);
+  return raw === 'verified' || raw === 'unverified' ? raw : null;
+};
+
+export const setDraftTrack = (track: VoteTrack): void => {
+  localStorage.setItem(DRAFT_TRACK_KEY, track);
+};
+
+// Clears all in-progress draft state, including the chosen track. Call this
+// after a successful final submit or if the student wants to restart.
 export const clearDraftState = (): void => {
   localStorage.removeItem(DRAFT_RATINGS_KEY);
   localStorage.removeItem(DRAFT_SKIPPED_KEY);
   localStorage.removeItem(DRAFT_POSITION_KEY);
+  localStorage.removeItem(DRAFT_TRACK_KEY);
 };
 
 // ============================================
@@ -210,7 +218,6 @@ export const getUserIpAddress = async (): Promise<string | null> => {
   }
 };
 
-// Alternative: Use WebRTC to detect IP (if needed)
 export const getUserIpViaWebRTC = (): Promise<string | null> => {
   return new Promise((resolve) => {
     const pc = new (window.RTCPeerConnection || (window as any).webkitRTCPeerConnection)({
@@ -282,14 +289,12 @@ export const generateDeviceFingerprint = async (): Promise<DeviceFingerprint> =>
   };
 };
 
-// Hash device fingerprint for storage
 export const hashFingerprint = (fingerprint: string): string => {
-  // Simple hash function (in production, use crypto.subtle.digest)
   let hash = 0;
   for (let i = 0; i < fingerprint.length; i++) {
     const char = fingerprint.charCodeAt(i);
     hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
+    hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
 };

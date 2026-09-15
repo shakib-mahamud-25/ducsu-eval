@@ -6,7 +6,7 @@ import LeaderCard from '@/components/LeaderCard';
 import TopBottomDashboard from '@/components/TopBottomDashboard';
 import EvaluationFlow from '@/components/EvaluationFlow';
 import { detectIncognitoMode, getVotedLeaderIds } from '@/lib/fingerprint';
-import { listenToScores, listenToVotingWindow, LeaderScore, VotingWindowConfig } from '@/lib/firebase';
+import { listenToScores, listenToVotingWindow, DualTrackLeaderScore, VotingWindowConfig } from '@/lib/firebase';
 
 interface Leader {
   id: string;
@@ -21,7 +21,7 @@ interface Leader {
 export default function Home() {
   const [leaders, setLeaders] = useState<Leader[]>([]);
   const [votedLeaderIds, setVotedLeaderIds] = useState<string[]>([]);
-  const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
+  const [leaderScores, setLeaderScores] = useState<Map<string, DualTrackLeaderScore>>(new Map());
   const [isIncognito, setIsIncognito] = useState(false);
   const [showFlow, setShowFlow] = useState(false);
   const [votingWindow, setVotingWindow] = useState<VotingWindowConfig>({
@@ -116,14 +116,16 @@ export default function Home() {
       {leaders
         .filter((l) => l.category === category)
         .map((leader) => {
-          const score = leaderScores.get(leader.id);
+          const entry = leaderScores.get(leader.id);
           return (
             <LeaderCard
               key={leader.id}
               {...leader}
               alreadyVoted={votedLeaderIds.includes(leader.id)}
-              score={score?.averageScore || 0}
-              votes={score?.totalVotes || 0}
+              unverifiedScore={entry?.unverified.averageScore || 0}
+              unverifiedVotes={entry?.unverified.totalVotes || 0}
+              verifiedScore={entry?.verified.averageScore || 0}
+              verifiedVotes={entry?.verified.totalVotes || 0}
             />
           );
         })}
@@ -168,7 +170,7 @@ export default function Home() {
               <p className="text-navy-500 text-sm mt-0.5">
                 {totalRated > 0
                   ? 'You can rate any leader you missed at any time.'
-                  : 'Takes about two minutes. One rating per leader, submitted anonymously.'}
+                  : 'Takes about two minutes. Choose quick or verified voting, submitted anonymously.'}
               </p>
             </div>
             <button

@@ -8,7 +8,7 @@ const nextConfig = {
         pathname: '/**',
       },
     ],
-    unoptimized: true, // For better GitHub image compatibility
+    unoptimized: true,
   },
   headers: async () => {
     return [

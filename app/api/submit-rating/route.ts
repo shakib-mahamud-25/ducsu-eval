@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuth } from 'firebase-admin/auth';
+import { getApps, initializeApp, cert, App } from 'firebase-admin/app';
 import {
   batchSubmitRatings,
   logFraudDetection,
   getSubmissionCountByIp,
   flagSuspiciousIp,
   getVotingWindowConfig,
+  hasEmailAlreadyVoted,
+  markEmailAsVoted,
+  VoteTrack,
 } from '@/lib/firebase';
 import { verifyTurnstileToken } from '@/lib/turnstile';
+import { isValidDuEmail } from '@/lib/auth';
+import crypto from 'crypto';
 
 interface RatingEntry {
   leaderId: string;
@@ -15,16 +22,47 @@ interface RatingEntry {
 
 interface SubmitRatingRequest {
   ratings: RatingEntry[];
-  turnstileToken: string;
-  fingerprintHash: string;
-  visitorId: string;
+  track: VoteTrack;
+  // Unverified track fields
+  turnstileToken?: string;
+  fingerprintHash?: string;
+  visitorId?: string;
+  // Verified track fields
+  firebaseIdToken?: string;
 }
 
-// Fallback caps if the admin hasn't set anything — real values are read
-// from env for now, and can move to the same admin config node as the
-// voting window if that becomes the preferred workflow.
 const IP_SOFT_CAP = parseInt(process.env.NEXT_PUBLIC_IP_SOFT_CAP || '8', 10);
 const IP_HARD_REVIEW_CAP = parseInt(process.env.NEXT_PUBLIC_IP_HARD_REVIEW_CAP || '12', 10);
+
+// ============================================
+// FIREBASE ADMIN (server-side ID token verification for the verified track)
+// ============================================
+// Requires FIREBASE_SERVICE_ACCOUNT_KEY env var: the JSON key for a service
+// account, stringified. Generate from Firebase Console → Project Settings
+// → Service Accounts → Generate new private key.
+
+let adminApp: App;
+const getAdminApp = (): App => {
+  if (getApps().length > 0) {
+    return getApps()[0];
+  }
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (!serviceAccountJson) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is not configured on the server.');
+  }
+  const serviceAccount = JSON.parse(serviceAccountJson);
+  adminApp = initializeApp({ credential: cert(serviceAccount) });
+  return adminApp;
+};
+
+// Same hashing approach as lib/auth.ts's client-side hashEmail, so the
+// same email always produces the same hash whether hashed on client or
+// server. Node's crypto module is used here since Web Crypto's subtle API
+// is also available in the Next.js Edge/Node runtime, but crypto is more
+// broadly compatible for a standard Node serverless function.
+const hashEmailServerSide = (email: string): string => {
+  return crypto.createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,9 +77,13 @@ export async function POST(request: NextRequest) {
 
     // 2. Parse request body
     const body: SubmitRatingRequest = await request.json();
-    const { ratings, turnstileToken, fingerprintHash, visitorId } = body;
+    const { ratings, track } = body;
 
-    // 3. Validate inputs
+    if (track !== 'verified' && track !== 'unverified') {
+      return NextResponse.json({ error: 'Invalid vote track.' }, { status: 400 });
+    }
+
+    // 3. Validate ratings
     if (!Array.isArray(ratings) || ratings.length === 0) {
       return NextResponse.json(
         { error: 'No ratings were submitted.' },
@@ -64,7 +106,74 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Verify Turnstile token (bot prevention) — once for the whole batch
+    // ============================================
+    // VERIFIED TRACK
+    // ============================================
+    if (track === 'verified') {
+      const { firebaseIdToken } = body;
+      if (!firebaseIdToken) {
+        return NextResponse.json(
+          { error: 'Missing verification token. Please sign in again.' },
+          { status: 401 }
+        );
+      }
+
+      let decodedEmail: string | undefined;
+      try {
+        const admin = getAdminApp();
+        const decoded = await getAuth(admin).verifyIdToken(firebaseIdToken);
+        decodedEmail = decoded.email;
+      } catch (err) {
+        console.error('Firebase ID token verification failed:', err);
+        return NextResponse.json(
+          { error: 'Your verification has expired. Please sign in again.' },
+          { status: 401 }
+        );
+      }
+
+      if (!decodedEmail || !isValidDuEmail(decodedEmail)) {
+        return NextResponse.json(
+          { error: 'This email is not a recognized DU student email.' },
+          { status: 403 }
+        );
+      }
+
+      const emailHash = hashEmailServerSide(decodedEmail);
+
+      const alreadyVoted = await hasEmailAlreadyVoted(emailHash);
+      if (alreadyVoted) {
+        return NextResponse.json(
+          { error: 'This email has already submitted a verified evaluation.', alreadyVoted: true },
+          { status: 409 }
+        );
+      }
+
+      const submissionIds = await batchSubmitRatings(ratings, 'verified');
+      await markEmailAsVoted(emailHash);
+
+      return NextResponse.json(
+        {
+          success: true,
+          submissionIds,
+          flagged: false,
+          message: 'Your verified evaluation has been recorded. Thank you.',
+        },
+        { status: 200 }
+      );
+    }
+
+    // ============================================
+    // UNVERIFIED TRACK (original fingerprint/IP/Turnstile flow, unchanged)
+    // ============================================
+    const { turnstileToken, fingerprintHash, visitorId } = body;
+
+    if (!turnstileToken || !fingerprintHash || !visitorId) {
+      return NextResponse.json(
+        { error: 'Missing required verification data.' },
+        { status: 400 }
+      );
+    }
+
     const turnstileVerification = await verifyTurnstileToken(turnstileToken);
     if (!turnstileVerification.success) {
       return NextResponse.json(
@@ -73,16 +182,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Get client IP address
     const clientIp =
       request.headers.get('x-forwarded-for')?.split(',')[0] ||
       request.headers.get('x-real-ip') ||
       'unknown';
 
-    // 6. Check submission count by IP (counts distinct devices, not raw rows)
     const submissionCountByIp = await getSubmissionCountByIp(clientIp);
 
-    // 7. Fraud detection logic
     let shouldFlag = false;
 
     if (submissionCountByIp >= IP_HARD_REVIEW_CAP) {
@@ -97,13 +203,10 @@ export async function POST(request: NextRequest) {
       shouldFlag = true;
     }
 
-    // 8. Log a single fraud detection record for this device/session
     await logFraudDetection(fingerprintHash, clientIp, visitorId);
 
-    // 9. Write every rating in one batch
-    const submissionIds = await batchSubmitRatings(ratings);
+    const submissionIds = await batchSubmitRatings(ratings, 'unverified');
 
-    // 10. Flag if necessary
     if (shouldFlag) {
       await flagSuspiciousIp(clientIp, submissionCountByIp + 1, [fingerprintHash]);
     }
@@ -128,7 +231,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// CORS options for preflight requests
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,

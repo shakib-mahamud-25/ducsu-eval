@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Star } from 'lucide-react';
+import { Star, ShieldCheck, Zap } from 'lucide-react';
 
 interface LeaderCardProps {
   id: string;
@@ -11,8 +11,10 @@ interface LeaderCardProps {
   position: string;
   imageUrl: string;
   category: 'top_executive' | 'secretarial' | 'executive_member';
-  score?: number;
-  votes?: number;
+  unverifiedScore?: number;
+  unverifiedVotes?: number;
+  verifiedScore?: number;
+  verifiedVotes?: number;
   alreadyVoted?: boolean;
   showScore?: boolean;
 }
@@ -24,8 +26,10 @@ export default function LeaderCard({
   position,
   imageUrl,
   category,
-  score = 0,
-  votes = 0,
+  unverifiedScore = 0,
+  unverifiedVotes = 0,
+  verifiedScore = 0,
+  verifiedVotes = 0,
   alreadyVoted = false,
   showScore = true,
 }: LeaderCardProps) {
@@ -98,27 +102,66 @@ export default function LeaderCard({
         </p>
 
         {showScore && (
-          <div className="pt-2.5 border-t border-navy-100 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <Star size={14} className="text-gold-500" fill="currentColor" />
-                <span className="text-sm font-semibold text-navy-800">
-                  {votes > 0 ? score.toFixed(1) : '—'}
-                </span>
-                <span className="text-navy-300 text-xs">/ 5.0</span>
-              </div>
-              <span className="text-xs text-navy-400">
-                {votes} {votes === 1 ? 'vote' : 'votes'}
-              </span>
-            </div>
-            <div className="w-full h-1 bg-navy-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-maroon-500 rounded-full transition-all duration-500"
-                style={{ width: `${(score / 5) * 100}%` }}
-              />
-            </div>
+          <div className="pt-2.5 border-t border-navy-100 space-y-2">
+            <ScoreRow
+              icon={<Zap size={11} className="text-navy-400" />}
+              label="Unverified"
+              score={unverifiedScore}
+              votes={unverifiedVotes}
+              barColorClass="bg-maroon-500"
+            />
+            <ScoreRow
+              icon={<ShieldCheck size={11} className="text-navy-400" />}
+              label="Verified"
+              score={verifiedScore}
+              votes={verifiedVotes}
+              barColorClass="bg-navy-600"
+            />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ScoreRow({
+  icon,
+  label,
+  score,
+  votes,
+  barColorClass,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  score: number;
+  votes: number;
+  barColorClass: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          {icon}
+          <span className="text-[10px] uppercase tracking-wide text-navy-400 font-medium">
+            {label}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Star size={11} className="text-gold-500" fill="currentColor" />
+          <span className="text-xs font-semibold text-navy-800">
+            {votes > 0 ? score.toFixed(1) : '—'}
+          </span>
+          <span className="text-navy-300 text-[10px]">/5.0</span>
+          <span className="text-navy-400 text-[10px] ml-1">
+            ({votes})
+          </span>
+        </div>
+      </div>
+      <div className="w-full h-1 bg-navy-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${barColorClass}`}
+          style={{ width: `${(score / 5) * 100}%` }}
+        />
       </div>
     </div>
   );

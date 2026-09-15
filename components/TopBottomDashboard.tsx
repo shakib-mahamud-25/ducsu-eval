@@ -2,8 +2,8 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { TrendingUp, TrendingDown, Star } from 'lucide-react';
-import { LeaderScore } from '@/lib/firebase';
+import { TrendingUp, TrendingDown, Star, Zap, ShieldCheck } from 'lucide-react';
+import { DualTrackLeaderScore } from '@/lib/firebase';
 
 interface Leader {
   id: string;
@@ -14,8 +14,30 @@ interface Leader {
 
 interface TopBottomDashboardProps {
   leaders: Leader[];
-  leaderScores: Map<string, LeaderScore>;
+  leaderScores: Map<string, DualTrackLeaderScore>;
   minVotes?: number;
+}
+
+interface QualifiedEntry {
+  leader: Leader;
+  averageScore: number;
+  totalVotes: number;
+}
+
+function buildQualified(
+  leaders: Leader[],
+  leaderScores: Map<string, DualTrackLeaderScore>,
+  track: 'unverified' | 'verified',
+  minVotes: number
+): QualifiedEntry[] {
+  return leaders
+    .map((leader) => {
+      const entry = leaderScores.get(leader.id);
+      const bucket = entry?.[track];
+      return { leader, averageScore: bucket?.averageScore ?? 0, totalVotes: bucket?.totalVotes ?? 0 };
+    })
+    .filter((entry) => entry.totalVotes >= minVotes)
+    .sort((a, b) => b.averageScore - a.averageScore);
 }
 
 export default function TopBottomDashboard({
@@ -23,52 +45,91 @@ export default function TopBottomDashboard({
   leaderScores,
   minVotes = 10,
 }: TopBottomDashboardProps) {
-  const qualified = leaders
-    .map((leader) => ({ leader, score: leaderScores.get(leader.id) }))
-    .filter((entry): entry is { leader: Leader; score: LeaderScore } =>
-      Boolean(entry.score && entry.score.totalVotes >= minVotes)
-    )
-    .sort((a, b) => b.score.averageScore - a.score.averageScore);
+  const unverifiedQualified = buildQualified(leaders, leaderScores, 'unverified', minVotes);
+  const verifiedQualified = buildQualified(leaders, leaderScores, 'verified', minVotes);
 
+  return (
+    <div className="space-y-6 mb-10">
+      <TrackSection
+        title="Unverified Votes"
+        icon={<Zap size={16} className="text-maroon-400" />}
+        qualified={unverifiedQualified}
+        totalLeaders={leaders.length}
+        minVotes={minVotes}
+        accentClass="border-maroon-500/40"
+      />
+      <TrackSection
+        title="Verified Votes (DU Email)"
+        icon={<ShieldCheck size={16} className="text-gold-400" />}
+        qualified={verifiedQualified}
+        totalLeaders={leaders.length}
+        minVotes={minVotes}
+        accentClass="border-gold-500/40"
+      />
+    </div>
+  );
+}
+
+function TrackSection({
+  title,
+  icon,
+  qualified,
+  totalLeaders,
+  minVotes,
+  accentClass,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  qualified: QualifiedEntry[];
+  totalLeaders: number;
+  minVotes: number;
+  accentClass: string;
+}) {
   const top3 = qualified.slice(0, 3);
   const bottom3 = qualified.length > 3 ? qualified.slice(-3).reverse() : [];
 
-  if (qualified.length === 0) {
-    return (
-      <div className="bg-navy-800 rounded-xl p-6 sm:p-8 text-center mb-10">
-        <p className="text-navy-200 text-sm">
-          Not enough votes yet. Rankings appear once a leader has received at least {minVotes} votes.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-navy-800 rounded-xl p-6 sm:p-8 mb-10">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <RankColumn
-          title="Highest Rated"
-          icon={<TrendingUp size={18} className="text-gold-400" />}
-          entries={top3}
-          accentClass="border-gold-500/40"
-        />
-        {bottom3.length > 0 ? (
-          <RankColumn
-            title="Lowest Rated"
-            icon={<TrendingDown size={18} className="text-navy-300" />}
-            entries={bottom3}
-            accentClass="border-navy-500"
-          />
-        ) : (
-          <div className="flex items-center justify-center text-navy-400 text-sm">
-            More rankings will appear as votes come in.
-          </div>
-        )}
+    <div className="bg-navy-800 rounded-xl p-6 sm:p-8">
+      <div className="flex items-center gap-2 mb-5">
+        {icon}
+        <h2 className="font-display text-lg text-paper">{title}</h2>
       </div>
-      {qualified.length < leaders.length && (
-        <p className="text-navy-400 text-xs text-center mt-6">
-          {leaders.length - qualified.length} leader{leaders.length - qualified.length !== 1 ? 's' : ''} still under {minVotes} votes and not yet ranked.
+
+      {qualified.length === 0 ? (
+        <p className="text-navy-300 text-sm text-center py-6">
+          Not enough votes yet. Rankings appear once a leader has received at least {minVotes}{' '}
+          votes in this category.
         </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <RankColumn
+              title="Highest Rated"
+              icon={<TrendingUp size={16} className="text-gold-400" />}
+              entries={top3}
+              accentClass={accentClass}
+            />
+            {bottom3.length > 0 ? (
+              <RankColumn
+                title="Lowest Rated"
+                icon={<TrendingDown size={16} className="text-navy-300" />}
+                entries={bottom3}
+                accentClass="border-navy-500"
+              />
+            ) : (
+              <div className="flex items-center justify-center text-navy-400 text-sm">
+                More rankings will appear as votes come in.
+              </div>
+            )}
+          </div>
+          {qualified.length < totalLeaders && (
+            <p className="text-navy-400 text-xs text-center mt-6">
+              {totalLeaders - qualified.length} leader
+              {totalLeaders - qualified.length !== 1 ? 's' : ''} still under {minVotes} votes in
+              this category and not yet ranked.
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -82,17 +143,17 @@ function RankColumn({
 }: {
   title: string;
   icon: React.ReactNode;
-  entries: { leader: Leader; score: LeaderScore }[];
+  entries: QualifiedEntry[];
   accentClass: string;
 }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
         {icon}
-        <h3 className="font-display text-lg text-paper">{title}</h3>
+        <h3 className="font-display text-base text-paper">{title}</h3>
       </div>
       <div className="space-y-3">
-        {entries.map(({ leader, score }, idx) => (
+        {entries.map(({ leader, averageScore }, idx) => (
           <div
             key={leader.id}
             className={`flex items-center gap-3 bg-navy-700/60 rounded-lg p-2.5 border ${accentClass}`}
@@ -109,7 +170,7 @@ function RankColumn({
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <Star size={12} className="text-gold-400" fill="currentColor" />
-              <span className="text-paper text-sm font-semibold">{score.averageScore.toFixed(1)}</span>
+              <span className="text-paper text-sm font-semibold">{averageScore.toFixed(1)}</span>
             </div>
           </div>
         ))}
