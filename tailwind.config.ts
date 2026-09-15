@@ -8,30 +8,51 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        purple: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a855f7',
-          600: '#9333ea',
-          700: '#7e22ce',
-          800: '#6b21a8',
-          900: '#581c87',
+        // Deep navy — primary institutional color, drawn from the DU seal
+        navy: {
+          50: '#EEF1F6',
+          100: '#D3DAE7',
+          200: '#A7B5CF',
+          300: '#7B90B7',
+          400: '#4F6B9F',
+          500: '#2C4470',
+          600: '#1D3057',
+          700: '#14213D',
+          800: '#0F192E',
+          900: '#0B1526',
         },
-        pink: {
-          50: '#fdf2f8',
-          100: '#fce7f3',
-          200: '#fbcfe8',
-          300: '#f8b4e6',
-          400: '#f472b6',
-          500: '#ec4899',
-          600: '#db2777',
-          700: '#be185d',
-          800: '#9d174d',
-          900: '#831843',
+        // Maroon — single accent, echoes the DU seal's banner
+        maroon: {
+          50: '#FBEEEF',
+          100: '#F1CDD0',
+          200: '#E29CA3',
+          300: '#C96570',
+          400: '#A83744',
+          500: '#7A1F2B',
+          600: '#671923',
+          700: '#54141D',
+          800: '#3F0F16',
+          900: '#2B0A0F',
         },
+        // Gold — reserved for ceremonial / top-3 moments only
+        gold: {
+          50: '#FDF8E9',
+          100: '#F8EABE',
+          200: '#F0D584',
+          300: '#E2BC52',
+          400: '#D4AF37',
+          500: '#C9A227',
+          600: '#A9861D',
+          700: '#836717',
+          800: '#5C4810',
+          900: '#3A2D0A',
+        },
+        ink: '#2A2A28',
+        paper: '#FAF7F2',
+      },
+      fontFamily: {
+        display: ['var(--font-display)', 'Georgia', 'serif'],
+        sans: ['var(--font-sans)', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
       animation: {
         spin: 'spin 1s linear infinite',

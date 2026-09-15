@@ -2,17 +2,20 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Shield, LogOut, Loader2, Check, X, Download, Trash2 } from 'lucide-react';
-import { getFlaggedSubmissions, getLeaderScores, LeaderScore } from '@/lib/firebase';
+import { Shield, LogOut, Loader2, Trash2, Download, Settings, CheckSquare, Square } from 'lucide-react';
+import {
+  getFlaggedSubmissions,
+  getLeaderScores,
+  getVotingWindowConfig,
+  setVotingWindowConfig,
+  deleteMultipleFlaggedEntries,
+  LeaderScore,
+  VotingWindowConfig,
+  FlaggedSubmission,
+} from '@/lib/firebase';
 
-interface FlaggedSubmission {
-  id: string;
-  ip_address: string;
-  count_from_ip: number;
-  fingerprints: string[];
-  status: 'pending' | 'approved' | 'rejected';
-  admin_note: string;
-  createdAt: number;
+interface FlaggedRow extends FlaggedSubmission {
+  flagId: string;
 }
 
 function AdminDashboardContent() {
@@ -20,12 +23,21 @@ function AdminDashboardContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [flaggedSubmissions, setFlaggedSubmissions] = useState<FlaggedSubmission[]>([]);
-  const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'flagged' | 'results' | 'data'>('flagged');
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  // Check if already authenticated via URL
+  const [flaggedRows, setFlaggedRows] = useState<FlaggedRow[]>([]);
+  const [selectedFlagIds, setSelectedFlagIds] = useState<Set<string>>(new Set());
+  const [leaderScores, setLeaderScores] = useState<Map<string, LeaderScore>>(new Map());
+  const [votingWindow, setVotingWindowState] = useState<VotingWindowConfig>({
+    isOpen: true,
+    startTime: null,
+    endTime: null,
+  });
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [savingWindow, setSavingWindow] = useState(false);
+  const [activeTab, setActiveTab] = useState<'flagged' | 'results' | 'settings'>('flagged');
+
   useEffect(() => {
     const token = searchParams.get('admin_token');
     if (token === process.env.NEXT_PUBLIC_ADMIN_TOKEN) {
@@ -33,29 +45,24 @@ function AdminDashboardContent() {
     }
   }, [searchParams]);
 
-  const [loginLoading, setLoginLoading] = useState(false);
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginLoading(true);
     setPasswordError('');
-
     try {
       const response = await fetch('/api/admin-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
-
       const data = await response.json();
-
       if (data.success) {
         setIsAuthenticated(true);
         setPassword('');
       } else {
         setPasswordError('Invalid password');
       }
-    } catch (error) {
+    } catch {
       setPasswordError('Login failed. Please try again.');
     } finally {
       setLoginLoading(false);
@@ -70,16 +77,21 @@ function AdminDashboardContent() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const flagged = await getFlaggedSubmissions();
-      const scores = await getLeaderScores();
+      const [flagged, scores, window] = await Promise.all([
+        getFlaggedSubmissions(),
+        getLeaderScores(),
+        getVotingWindowConfig(),
+      ]);
 
-      const flaggedArray = Array.from(flagged.values()).map((f, idx) => ({
-        ...f,
-        id: idx.toString(),
+      const rows: FlaggedRow[] = Array.from(flagged.entries()).map(([flagId, data]) => ({
+        ...data,
+        flagId,
       }));
 
-      setFlaggedSubmissions(flaggedArray);
+      setFlaggedRows(rows);
       setLeaderScores(scores);
+      setVotingWindowState(window);
+      setSelectedFlagIds(new Set());
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -87,22 +99,61 @@ function AdminDashboardContent() {
     }
   };
 
-  const handleApprove = (index: number) => {
-    const updated = [...flaggedSubmissions];
-    updated[index].status = 'approved';
-    setFlaggedSubmissions(updated);
+  useEffect(() => {
+    if (isAuthenticated) loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  const toggleSelected = (flagId: string) => {
+    setSelectedFlagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(flagId)) next.delete(flagId);
+      else next.add(flagId);
+      return next;
+    });
   };
 
-  const handleReject = (index: number) => {
-    const updated = [...flaggedSubmissions];
-    updated[index].status = 'rejected';
-    setFlaggedSubmissions(updated);
+  const toggleSelectAll = () => {
+    if (selectedFlagIds.size === flaggedRows.length) {
+      setSelectedFlagIds(new Set());
+    } else {
+      setSelectedFlagIds(new Set(flaggedRows.map((r) => r.flagId)));
+    }
   };
 
-  const handleDeleteData = async () => {
-    if (window.confirm('Are you sure? This will delete all fraud detection data permanently.')) {
-      console.log('Deleting fraud detection data...');
-      // In production, call Firebase delete function
+  const handleDeleteSelected = async () => {
+    if (selectedFlagIds.size === 0) return;
+    const confirmMsg =
+      selectedFlagIds.size === 1
+        ? 'Delete this flagged entry and its associated fraud detection records? This cannot be undone.'
+        : `Delete ${selectedFlagIds.size} flagged entries and their associated fraud detection records? This cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setDeleting(true);
+    try {
+      const entries = flaggedRows
+        .filter((r) => selectedFlagIds.has(r.flagId))
+        .map((r) => ({ flagId: r.flagId, ipAddress: r.ip_address }));
+      await deleteMultipleFlaggedEntries(entries);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to delete flagged entries:', error);
+      alert('Something went wrong deleting those entries. Check the console for details.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSaveVotingWindow = async (next: VotingWindowConfig) => {
+    setSavingWindow(true);
+    try {
+      await setVotingWindowConfig(next);
+      setVotingWindowState(next);
+    } catch (error) {
+      console.error('Failed to save voting window:', error);
+      alert('Failed to save. Check the console for details.');
+    } finally {
+      setSavingWindow(false);
     }
   };
 
@@ -111,18 +162,11 @@ function AdminDashboardContent() {
       leaderId: score.leaderId,
       totalVotes: score.totalVotes,
       averageScore: score.averageScore.toFixed(2),
-      distribution: score.scoreDistribution,
     }));
 
     const csv = [
-      ['Leader ID', 'Total Votes', 'Average Score', 'Min Score', 'Max Score'],
-      ...results.map((r) => [
-        r.leaderId,
-        r.totalVotes,
-        r.averageScore,
-        Object.keys(r.distribution)[0],
-        Object.keys(r.distribution)[Object.keys(r.distribution).length - 1],
-      ]),
+      ['Leader ID', 'Total Votes', 'Average Score'],
+      ...results.map((r) => [r.leaderId, r.totalVotes, r.averageScore]),
     ];
 
     const csvContent = csv.map((row) => row.join(',')).join('\n');
@@ -134,27 +178,19 @@ function AdminDashboardContent() {
     a.click();
   };
 
-  // Login Form
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center px-4">
-        <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full">
+      <div className="min-h-screen bg-navy-900 flex items-center justify-center px-4">
+        <div className="bg-navy-800 rounded-2xl shadow-2xl p-8 max-w-md w-full">
           <div className="flex justify-center mb-6">
-            <Shield className="w-12 h-12 text-purple-500" />
+            <Shield className="w-11 h-11 text-gold-400" />
           </div>
-
-          <h1 className="text-3xl font-bold text-white text-center mb-2">
-            Admin Dashboard
-          </h1>
-          <p className="text-gray-400 text-center mb-6">
-            DUCSU 2025 Evaluation Management
-          </p>
+          <h1 className="font-display text-2xl text-paper text-center mb-1">Admin Dashboard</h1>
+          <p className="text-navy-400 text-center text-sm mb-6">DUCSU 2025 Evaluation Management</p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-gray-300 text-sm font-semibold mb-2">
-                Admin Password
-              </label>
+              <label className="block text-navy-300 text-sm font-medium mb-2">Admin Password</label>
               <input
                 type="password"
                 value={password}
@@ -163,203 +199,178 @@ function AdminDashboardContent() {
                   setPasswordError('');
                 }}
                 placeholder="Enter admin password"
-                className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-navy-700 text-paper px-4 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-maroon-500 placeholder:text-navy-400"
               />
-              {passwordError && (
-                <p className="text-red-500 text-sm mt-2">{passwordError}</p>
-              )}
+              {passwordError && <p className="text-maroon-400 text-sm mt-2">{passwordError}</p>}
             </div>
 
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 rounded-lg hover:shadow-lg transition disabled:opacity-50"
+              className="w-full bg-maroon-600 text-white font-semibold py-2.5 rounded-lg hover:bg-maroon-700 transition disabled:opacity-50"
             >
-              {loginLoading ? 'Checking...' : 'Login'}
+              {loginLoading ? 'Checking…' : 'Login'}
             </button>
           </form>
-
-          <p className="text-gray-500 text-xs text-center mt-4">
-            Password is stored securely and encrypted in transit
-          </p>
         </div>
       </div>
     );
   }
 
-  // Admin Dashboard
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-6 shadow-lg">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+    <div className="min-h-screen bg-navy-900 text-paper">
+      <div className="bg-navy-800 p-6 border-b border-navy-700">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-            <p className="text-purple-100">DUCSU 2025 Evaluation Management</p>
+            <h1 className="font-display text-2xl">Admin Dashboard</h1>
+            <p className="text-navy-400 text-sm">DUCSU 2025 Evaluation Management</p>
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition"
+            className="flex items-center gap-2 bg-navy-700 hover:bg-navy-600 px-4 py-2 rounded-lg transition text-sm"
           >
-            <LogOut size={20} />
+            <LogOut size={16} />
             Logout
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex gap-4 mb-6 border-b border-gray-700">
-          {(['flagged', 'results', 'data'] as const).map((tab) => (
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="flex gap-1 mb-6 border-b border-navy-700">
+          {(['flagged', 'results', 'settings'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => {
-                setActiveTab(tab);
-                loadData();
-              }}
-              className={`px-4 py-3 font-semibold transition ${
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-3 font-medium text-sm transition ${
                 activeTab === tab
-                  ? 'text-purple-500 border-b-2 border-purple-500'
-                  : 'text-gray-400 hover:text-gray-300'
+                  ? 'text-gold-400 border-b-2 border-gold-400'
+                  : 'text-navy-400 hover:text-navy-200'
               }`}
             >
               {tab === 'flagged' && 'Flagged Submissions'}
               {tab === 'results' && 'Live Results'}
-              {tab === 'data' && 'Data Management'}
+              {tab === 'settings' && 'Voting Window'}
             </button>
           ))}
         </div>
 
-        {/* Content */}
         {loading ? (
           <div className="text-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-500 mx-auto mb-3" />
-            <p className="text-gray-400">Loading data...</p>
+            <Loader2 className="w-7 h-7 animate-spin text-gold-400 mx-auto mb-3" />
+            <p className="text-navy-400 text-sm">Loading…</p>
           </div>
         ) : (
           <>
-            {/* Flagged Submissions Tab */}
             {activeTab === 'flagged' && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-bold mb-4">
-                  Flagged IP Addresses ({flaggedSubmissions.length})
-                </h2>
-                {flaggedSubmissions.length === 0 ? (
-                  <p className="text-gray-400">No flagged submissions</p>
-                ) : (
-                  flaggedSubmissions.map((submission, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-purple-500 transition"
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <button onClick={toggleSelectAll} className="text-navy-300 hover:text-paper transition">
+                      {selectedFlagIds.size === flaggedRows.length && flaggedRows.length > 0 ? (
+                        <CheckSquare size={18} />
+                      ) : (
+                        <Square size={18} />
+                      )}
+                    </button>
+                    <h2 className="text-lg font-medium">
+                      Flagged IPs ({flaggedRows.length})
+                      {selectedFlagIds.size > 0 && (
+                        <span className="text-navy-400 text-sm font-normal"> — {selectedFlagIds.size} selected</span>
+                      )}
+                    </h2>
+                  </div>
+                  {selectedFlagIds.size > 0 && (
+                    <button
+                      onClick={handleDeleteSelected}
+                      disabled={deleting}
+                      className="flex items-center gap-2 bg-maroon-600 hover:bg-maroon-700 px-4 py-2 rounded-lg transition text-sm font-medium disabled:opacity-50"
                     >
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <p className="text-gray-400 text-sm">IP Address</p>
-                          <p className="text-white font-mono text-sm break-all">{submission.ip_address}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400 text-sm">Submissions from IP</p>
-                          <p className="text-white text-lg font-bold">
-                            {submission.count_from_ip}
-                          </p>
-                        </div>
-                      </div>
+                      <Trash2 size={15} />
+                      {deleting ? 'Deleting…' : `Delete ${selectedFlagIds.size}`}
+                    </button>
+                  )}
+                </div>
 
-                      <div className="mb-4">
-                        <p className="text-gray-400 text-sm mb-2">Status</p>
-                        <p className="text-white text-sm capitalize font-semibold">
-                          {submission.status === 'pending' && (
-                            <span className="text-yellow-400">● Pending Review</span>
-                          )}
-                          {submission.status === 'approved' && (
-                            <span className="text-green-400">✓ Approved</span>
-                          )}
-                          {submission.status === 'rejected' && (
-                            <span className="text-red-400">✗ Rejected</span>
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="mb-4">
-                        <p className="text-gray-400 text-sm mb-2">Fingerprints Detected</p>
-                        <p className="text-gray-300 text-xs">
-                          {submission.fingerprints.length} unique device(s)
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleApprove(idx)}
-                          disabled={submission.status === 'approved'}
-                          className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition ${
-                            submission.status === 'approved'
-                              ? 'bg-green-600 text-white cursor-default'
-                              : 'bg-gray-700 text-gray-300 hover:bg-green-600 hover:text-white'
-                          }`}
-                        >
-                          <Check size={16} />
-                          Approve
+                {flaggedRows.length === 0 ? (
+                  <p className="text-navy-400 text-sm">No flagged submissions.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {flaggedRows.map((row) => (
+                      <div
+                        key={row.flagId}
+                        className={`flex items-center gap-4 bg-navy-800 rounded-lg p-4 border transition ${
+                          selectedFlagIds.has(row.flagId) ? 'border-maroon-500' : 'border-navy-700'
+                        }`}
+                      >
+                        <button onClick={() => toggleSelected(row.flagId)} className="text-navy-300 hover:text-paper flex-shrink-0">
+                          {selectedFlagIds.has(row.flagId) ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
+                        <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div>
+                            <p className="text-navy-400 text-xs">IP Address</p>
+                            <p className="font-mono text-sm break-all">{row.ip_address}</p>
+                          </div>
+                          <div>
+                            <p className="text-navy-400 text-xs">Submissions</p>
+                            <p className="text-sm font-semibold">{row.count_from_ip}</p>
+                          </div>
+                          <div>
+                            <p className="text-navy-400 text-xs">Fingerprints</p>
+                            <p className="text-sm">{row.fingerprints.length} device(s)</p>
+                          </div>
+                          <div>
+                            <p className="text-navy-400 text-xs">Status</p>
+                            <p className="text-sm capitalize">{row.status}</p>
+                          </div>
+                        </div>
                         <button
-                          onClick={() => handleReject(idx)}
-                          disabled={submission.status === 'rejected'}
-                          className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition ${
-                            submission.status === 'rejected'
-                              ? 'bg-red-600 text-white cursor-default'
-                              : 'bg-gray-700 text-gray-300 hover:bg-red-600 hover:text-white'
-                          }`}
+                          onClick={() => {
+                            setSelectedFlagIds(new Set([row.flagId]));
+                            handleDeleteSelected();
+                          }}
+                          className="text-navy-400 hover:text-maroon-400 transition flex-shrink-0"
+                          title="Delete this entry"
                         >
-                          <X size={16} />
-                          Reject
+                          <Trash2 size={16} />
                         </button>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             )}
 
-            {/* Results Tab */}
             {activeTab === 'results' && (
-              <div className="space-y-4">
+              <div>
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold">
-                    Real-time Voting Results
-                  </h2>
+                  <h2 className="text-lg font-medium">Real-time Voting Results</h2>
                   <button
                     onClick={exportResults}
-                    className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition"
+                    className="flex items-center gap-2 bg-navy-700 hover:bg-navy-600 px-4 py-2 rounded-lg transition text-sm"
                   >
-                    <Download size={18} />
+                    <Download size={16} />
                     Export CSV
                   </button>
                 </div>
                 {leaderScores.size === 0 ? (
-                  <p className="text-gray-400">No votes yet</p>
+                  <p className="text-navy-400 text-sm">No votes yet.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {Array.from(leaderScores.values())
                       .sort((a, b) => b.averageScore - a.averageScore)
                       .map((score) => (
-                        <div
-                          key={score.leaderId}
-                          className="bg-gray-800 rounded-lg p-4 border border-gray-700"
-                        >
+                        <div key={score.leaderId} className="bg-navy-800 rounded-lg p-4 border border-navy-700">
                           <div className="flex justify-between items-start mb-2">
-                            <p className="font-semibold text-sm">{score.leaderId}</p>
-                            <span className="text-lg font-bold text-yellow-400">
-                              {score.averageScore.toFixed(2)}/5
-                            </span>
+                            <p className="font-medium text-sm">{score.leaderId}</p>
+                            <span className="text-gold-400 font-semibold">{score.averageScore.toFixed(2)}/5</span>
                           </div>
-                          <div className="w-full bg-gray-700 rounded-full h-2">
+                          <div className="w-full bg-navy-700 rounded-full h-1.5">
                             <div
-                              className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-2 rounded-full"
-                              style={{
-                                width: `${(score.averageScore / 5) * 100}%`,
-                              }}
+                              className="bg-gold-500 h-1.5 rounded-full"
+                              style={{ width: `${(score.averageScore / 5) * 100}%` }}
                             />
                           </div>
-                          <p className="text-gray-400 text-sm mt-2">
+                          <p className="text-navy-400 text-xs mt-2">
                             {score.totalVotes} vote{score.totalVotes !== 1 ? 's' : ''}
                           </p>
                         </div>
@@ -369,38 +380,12 @@ function AdminDashboardContent() {
               </div>
             )}
 
-            {/* Data Management Tab */}
-            {activeTab === 'data' && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-bold mb-4">Data Management</h2>
-
-                <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4 mb-4">
-                  <p className="text-yellow-200 text-sm">
-                    Fraud detection data (IP logs, fingerprints) is automatically deleted after 14 days.
-                    You can manually delete earlier if needed.
-                  </p>
-                </div>
-
-                <div className="space-y-2 bg-gray-800 rounded-lg p-4">
-                  <p className="text-gray-300 text-sm">
-                    <strong>Flagged Submissions:</strong> {flaggedSubmissions.length}
-                  </p>
-                  <p className="text-gray-300 text-sm">
-                    <strong>Total Leaders Voted:</strong> {leaderScores.size}
-                  </p>
-                  <p className="text-gray-300 text-sm">
-                    <strong>Total Votes:</strong> {Array.from(leaderScores.values()).reduce((sum, s) => sum + s.totalVotes, 0)}
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleDeleteData}
-                  className="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition font-semibold"
-                >
-                  <Trash2 size={18} />
-                  Delete Fraud Detection Data
-                </button>
-              </div>
+            {activeTab === 'settings' && (
+              <VotingWindowPanel
+                votingWindow={votingWindow}
+                saving={savingWindow}
+                onSave={handleSaveVotingWindow}
+              />
             )}
           </>
         )}
@@ -409,10 +394,69 @@ function AdminDashboardContent() {
   );
 }
 
+function VotingWindowPanel({
+  votingWindow,
+  saving,
+  onSave,
+}: {
+  votingWindow: VotingWindowConfig;
+  saving: boolean;
+  onSave: (config: VotingWindowConfig) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(votingWindow.isOpen);
+
+  useEffect(() => {
+    setIsOpen(votingWindow.isOpen);
+  }, [votingWindow.isOpen]);
+
+  return (
+    <div className="max-w-md">
+      <div className="flex items-center gap-2 mb-4">
+        <Settings size={18} className="text-navy-400" />
+        <h2 className="text-lg font-medium">Voting Window</h2>
+      </div>
+
+      <div className="bg-navy-800 rounded-lg p-5 border border-navy-700 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Voting is currently</p>
+            <p className={`text-sm ${isOpen ? 'text-gold-400' : 'text-navy-400'}`}>
+              {isOpen ? 'Open — students can submit evaluations' : 'Closed — submissions are blocked'}
+            </p>
+          </div>
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className={`relative w-12 h-6 rounded-full transition ${isOpen ? 'bg-maroon-600' : 'bg-navy-600'}`}
+          >
+            <span
+              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                isOpen ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        <p className="text-navy-400 text-xs leading-relaxed">
+          This takes effect immediately for all students — no redeploy needed. When closed,
+          the evaluation button is hidden and the server also rejects new submissions directly.
+        </p>
+
+        <button
+          onClick={() => onSave({ ...votingWindow, isOpen })}
+          disabled={saving || isOpen === votingWindow.isOpen}
+          className="w-full bg-maroon-600 hover:bg-maroon-700 text-white font-medium py-2.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AdminLoadingFallback() {
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+    <div className="min-h-screen bg-navy-900 flex items-center justify-center">
+      <Loader2 className="w-7 h-7 animate-spin text-gold-400" />
     </div>
   );
 }

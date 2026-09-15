@@ -13,9 +13,7 @@ interface LeaderCardProps {
   category: 'top_executive' | 'secretarial' | 'executive_member';
   score?: number;
   votes?: number;
-  isSelected?: boolean;
   alreadyVoted?: boolean;
-  onClick?: () => void;
   showScore?: boolean;
 }
 
@@ -28,25 +26,10 @@ export default function LeaderCard({
   category,
   score = 0,
   votes = 0,
-  isSelected = false,
   alreadyVoted = false,
-  onClick,
   showScore = true,
 }: LeaderCardProps) {
   const [imageError, setImageError] = useState(false);
-
-  const getCategoryColor = () => {
-    switch (category) {
-      case 'top_executive':
-        return 'from-purple-500 to-pink-500';
-      case 'secretarial':
-        return 'from-blue-500 to-cyan-500';
-      case 'executive_member':
-        return 'from-green-500 to-emerald-500';
-      default:
-        return 'from-gray-500 to-gray-700';
-    }
-  };
 
   const getCategoryLabel = () => {
     switch (category) {
@@ -64,100 +47,79 @@ export default function LeaderCard({
   return (
     <div
       data-leader-id={id}
-      onClick={alreadyVoted ? undefined : onClick}
-      className={`group relative overflow-hidden rounded-2xl bg-white shadow-lg transition-all duration-300 ${
-        alreadyVoted
-          ? 'opacity-75 cursor-default'
-          : 'hover:shadow-2xl cursor-pointer hover:scale-105'
-      } ${isSelected ? 'ring-4 ring-purple-500 scale-105' : ''}`}
+      className="group relative overflow-hidden rounded-xl bg-white border border-navy-100 transition-shadow duration-200 hover:shadow-lg"
     >
-      {/* Background gradient overlay */}
-      <div
-        className={`absolute inset-0 bg-gradient-to-br ${getCategoryColor()} opacity-0 group-hover:opacity-10 transition-opacity duration-300 z-0`}
-      />
-
-      {/* Content */}
-      <div className="relative z-10 overflow-hidden">
-        {/* Image Container */}
-        <div className="relative h-80 w-full overflow-hidden bg-gray-200">
-          {!imageError ? (
-            <Image
-              src={imageUrl}
-              alt={name}
-              fill
-              className="object-cover transition-transform duration-500 group-hover:scale-110"
-              onError={() => setImageError(true)}
-              unoptimized
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
-              <div className="text-center">
-                <div className="text-6xl font-bold text-gray-500 mb-2">
-                  {name.charAt(0)}
-                </div>
-                <p className="text-gray-600 text-xs">Image unavailable</p>
+      {/* Image */}
+      <div className="relative h-64 w-full overflow-hidden bg-navy-50">
+        {!imageError ? (
+          <Image
+            src={imageUrl}
+            alt={name}
+            fill
+            className="object-cover"
+            onError={() => setImageError(true)}
+            unoptimized
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center bg-navy-100">
+            <div className="text-center">
+              <div className="font-display text-5xl text-navy-400 mb-1">
+                {name.charAt(0)}
               </div>
+              <p className="text-navy-400 text-xs">Photo unavailable</p>
             </div>
-          )}
-
-          {/* Category Badge */}
-          <div
-            className={`absolute top-3 right-3 bg-gradient-to-r ${getCategoryColor()} text-white px-3 py-1 rounded-full text-xs font-semibold shadow-md`}
-          >
-            {getCategoryLabel()}
           </div>
+        )}
 
-          {/* Already Voted Indicator */}
-          {alreadyVoted && (
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-              <div className="bg-green-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-semibold text-sm">
-                <span>✓</span>
-                <span>Rated</span>
-              </div>
-            </div>
+        <div className="absolute top-3 left-3 bg-navy-800/85 text-paper px-2.5 py-1 rounded text-[11px] font-medium tracking-wide">
+          {getCategoryLabel()}
+        </div>
+
+        {alreadyVoted && (
+          <div className="absolute top-3 right-3 bg-maroon-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs shadow">
+            ✓
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-4 space-y-2.5">
+        <div>
+          <h3 className="font-display text-base text-navy-800 leading-snug truncate">
+            {name}
+          </h3>
+          {nameAlt && (
+            <p className="text-xs text-navy-400 italic truncate">({nameAlt})</p>
           )}
         </div>
 
-        {/* Info Section */}
-        <div className="p-4 space-y-2">
-          {/* Name */}
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 truncate">
-              {name}
-            </h3>
-            {nameAlt && (
-              <p className="text-xs text-gray-500 italic truncate">
-                ({nameAlt})
-              </p>
-            )}
-          </div>
+        <p className="text-sm text-navy-500 line-clamp-2 leading-tight">
+          {position}
+        </p>
 
-          {/* Position */}
-          <p className="text-sm text-gray-600 line-clamp-2 leading-tight">
-            {position}
-          </p>
-
-          {/* Score Display */}
-          {showScore && score > 0 && (
-            <div className="pt-2 border-t border-gray-200 flex items-center justify-between">
+        {showScore && (
+          <div className="pt-2.5 border-t border-navy-100 space-y-1.5">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-1">
-                <Star size={16} className="text-yellow-400" fill="currentColor" />
-                <span className="text-lg font-bold text-gray-900">
-                  {score.toFixed(1)}
+                <Star size={14} className="text-gold-500" fill="currentColor" />
+                <span className="text-sm font-semibold text-navy-800">
+                  {votes > 0 ? score.toFixed(1) : '—'}
                 </span>
+                <span className="text-navy-300 text-xs">/ 5.0</span>
               </div>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-navy-400">
                 {votes} {votes === 1 ? 'vote' : 'votes'}
               </span>
             </div>
-          )}
-        </div>
+            <div className="w-full h-1 bg-navy-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-maroon-500 rounded-full transition-all duration-500"
+                style={{ width: `${(score / 5) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Hover gradient overlay */}
-      <div
-        className={`absolute inset-0 bg-gradient-to-t from-black/0 to-transparent opacity-0 group-hover:opacity-30 transition-opacity duration-300 z-0`}
-      />
     </div>
   );
 }

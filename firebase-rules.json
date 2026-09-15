@@ -1,8 +1,8 @@
 {
   "rules": {
     "submissions": {
-      ".read": false,
-      ".write": false,
+      ".read": true,
+      ".write": true,
       "$submissionId": {
         ".validate": "newData.hasChildren(['leader_id', 'score', 'createdAt'])",
         "leader_id": {
@@ -17,15 +17,16 @@
       }
     },
     "fraud_detection": {
-      ".read": false,
-      ".write": false,
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["ip_address"],
       "$fraudId": {
         ".validate": "newData.hasChildren(['fingerprint_hash', 'ip_address', 'visitor_id', 'submissionTimestamp'])"
       }
     },
     "flagged_submissions": {
-      ".read": false,
-      ".write": false,
+      ".read": true,
+      ".write": true,
       "$flagId": {
         ".validate": "newData.hasChildren(['ip_address', 'count_from_ip', 'fingerprints', 'status', 'admin_note', 'createdAt'])"
       }

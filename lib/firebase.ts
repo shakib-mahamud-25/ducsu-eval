@@ -1,12 +1,14 @@
 import { initializeApp } from 'firebase/app';
-import { 
-  getDatabase, 
-  ref, 
-  set, 
-  push, 
-  query, 
-  orderByChild, 
-  equalTo, 
+import {
+  getDatabase,
+  ref,
+  set,
+  update,
+  remove,
+  push,
+  query,
+  orderByChild,
+  equalTo,
   get,
   onValue,
   Unsubscribe
@@ -42,7 +44,7 @@ export const submitRating = async (
 ): Promise<string> => {
   const submissionsRef = ref(database, 'submissions');
   const newRef = push(submissionsRef);
-  
+
   const submission: Submission = {
     leader_id: leaderId,
     score: parseFloat(score.toFixed(1)),
@@ -51,6 +53,32 @@ export const submitRating = async (
 
   await set(newRef, submission);
   return newRef.key || '';
+};
+
+// Writes every rating from a completed evaluation session in a single
+// multi-path update, so the whole batch either lands together or not at all.
+// Returns the generated submission IDs in the same order as the input.
+export const batchSubmitRatings = async (
+  ratings: { leaderId: string; score: number }[]
+): Promise<string[]> => {
+  const submissionsRef = ref(database, 'submissions');
+  const createdAt = Date.now();
+  const updates: Record<string, Submission> = {};
+  const ids: string[] = [];
+
+  for (const { leaderId, score } of ratings) {
+    const newRef = push(submissionsRef);
+    const key = newRef.key || '';
+    ids.push(key);
+    updates[key] = {
+      leader_id: leaderId,
+      score: parseFloat(score.toFixed(1)),
+      createdAt,
+    };
+  }
+
+  await update(submissionsRef, updates);
+  return ids;
 };
 
 // ============================================
@@ -143,7 +171,7 @@ export const flagSuspiciousIp = async (
 export const getFlaggedSubmissions = async (): Promise<Map<string, FlaggedSubmission>> => {
   const flaggedRef = ref(database, 'flagged_submissions');
   const snapshot = await get(flaggedRef);
-  
+
   const result = new Map<string, FlaggedSubmission>();
   if (snapshot.exists()) {
     snapshot.forEach((childSnapshot) => {
@@ -151,6 +179,78 @@ export const getFlaggedSubmissions = async (): Promise<Map<string, FlaggedSubmis
     });
   }
   return result;
+};
+
+// ============================================
+// VOTING WINDOW CONFIG (admin-editable, replaces env vars)
+// ============================================
+
+export interface VotingWindowConfig {
+  isOpen: boolean;
+  startTime: number | null; // epoch ms, optional informational display
+  endTime: number | null; // epoch ms, optional informational display
+}
+
+const DEFAULT_VOTING_WINDOW: VotingWindowConfig = {
+  isOpen: true,
+  startTime: null,
+  endTime: null,
+};
+
+export const getVotingWindowConfig = async (): Promise<VotingWindowConfig> => {
+  const configRef = ref(database, 'config/voting_window');
+  const snapshot = await get(configRef);
+  if (!snapshot.exists()) return DEFAULT_VOTING_WINDOW;
+  return { ...DEFAULT_VOTING_WINDOW, ...snapshot.val() };
+};
+
+export const listenToVotingWindow = (
+  callback: (config: VotingWindowConfig) => void
+): Unsubscribe => {
+  const configRef = ref(database, 'config/voting_window');
+  return onValue(configRef, (snapshot) => {
+    callback(snapshot.exists() ? { ...DEFAULT_VOTING_WINDOW, ...snapshot.val() } : DEFAULT_VOTING_WINDOW);
+  });
+};
+
+export const setVotingWindowConfig = async (config: VotingWindowConfig): Promise<void> => {
+  const configRef = ref(database, 'config/voting_window');
+  await set(configRef, config);
+};
+
+// ============================================
+// FLAGGED SUBMISSION DELETION (admin fraud review)
+// ============================================
+// Scoped deliberately to flagged/suspicious IPs only — this is not a
+// general-purpose "browse every voter" capability. It deletes the
+// fraud_detection records tied to a flagged IP plus the flag entry itself.
+// It does not delete the anonymous rating submissions those records may be
+// associated with, since submissions are not linked back to any device.
+
+export const deleteFlaggedEntry = async (flagId: string, ipAddress: string): Promise<void> => {
+  // Remove the flag record
+  await remove(ref(database, `flagged_submissions/${flagId}`));
+
+  // Remove matching fraud_detection records for that IP
+  const fraudRef = ref(database, 'fraud_detection');
+  const q = query(fraudRef, orderByChild('ip_address'), equalTo(ipAddress));
+  const snapshot = await get(q);
+
+  if (snapshot.exists()) {
+    const deletions: Record<string, null> = {};
+    snapshot.forEach((child) => {
+      deletions[child.key!] = null;
+    });
+    await update(fraudRef, deletions);
+  }
+};
+
+export const deleteMultipleFlaggedEntries = async (
+  entries: { flagId: string; ipAddress: string }[]
+): Promise<void> => {
+  for (const entry of entries) {
+    await deleteFlaggedEntry(entry.flagId, entry.ipAddress);
+  }
 };
 
 // ============================================
@@ -201,8 +301,8 @@ export const getLeaderScores = async (): Promise<Map<string, LeaderScore>> => {
       Object.entries(leaderData.scoreDistribution).forEach(([score, count]) => {
         totalScore += parseFloat(score) * count;
       });
-      leaderData.averageScore = leaderData.totalVotes > 0 
-        ? totalScore / leaderData.totalVotes 
+      leaderData.averageScore = leaderData.totalVotes > 0
+        ? totalScore / leaderData.totalVotes
         : 0;
     });
   }
@@ -248,8 +348,8 @@ export const listenToScores = (
         Object.entries(leaderData.scoreDistribution).forEach(([score, count]) => {
           totalScore += parseFloat(score) * count;
         });
-        leaderData.averageScore = leaderData.totalVotes > 0 
-          ? totalScore / leaderData.totalVotes 
+        leaderData.averageScore = leaderData.totalVotes > 0
+          ? totalScore / leaderData.totalVotes
           : 0;
       });
     }

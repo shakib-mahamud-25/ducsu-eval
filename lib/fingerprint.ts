@@ -69,7 +69,7 @@ const SUBMISSION_TIME_KEY = 'ducsu_submission_time';
 
 export const getOrCreateVisitorId = (): string => {
   let visitorId = localStorage.getItem(VISITOR_ID_KEY);
-  
+
   if (!visitorId) {
     // Create new visitor ID based on fingerprint + timestamp
     visitorId = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
@@ -123,6 +123,76 @@ export const markLeaderAsVoted = (leaderId: string): void => {
 export const getSubmissionTime = (): number | null => {
   const time = localStorage.getItem(SUBMISSION_TIME_KEY);
   return time ? parseInt(time, 10) : null;
+};
+
+// ============================================
+// IN-PROGRESS DRAFT TRACKING (sequential batch-submit flow)
+// ============================================
+// Ratings are held here for the whole 28-leader pass and are only written to
+// Firebase once, at final submit. This lets a student go back and change a
+// rating, skip a leader and return to it, or close the tab and resume later
+// — all before anything is actually recorded as a vote.
+
+const DRAFT_RATINGS_KEY = 'ducsu_draft_ratings';
+const DRAFT_SKIPPED_KEY = 'ducsu_draft_skipped';
+const DRAFT_POSITION_KEY = 'ducsu_draft_position';
+
+export interface DraftRatings {
+  [leaderId: string]: number;
+}
+
+export const getDraftRatings = (): DraftRatings => {
+  try {
+    const raw = localStorage.getItem(DRAFT_RATINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setDraftRating = (leaderId: string, score: number): void => {
+  const drafts = getDraftRatings();
+  drafts[leaderId] = score;
+  localStorage.setItem(DRAFT_RATINGS_KEY, JSON.stringify(drafts));
+
+  // Rating a leader clears any "skipped" flag on them
+  const skipped = getSkippedLeaderIds().filter((id) => id !== leaderId);
+  localStorage.setItem(DRAFT_SKIPPED_KEY, JSON.stringify(skipped));
+};
+
+export const getSkippedLeaderIds = (): string[] => {
+  try {
+    const raw = localStorage.getItem(DRAFT_SKIPPED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const markLeaderSkipped = (leaderId: string): void => {
+  const skipped = getSkippedLeaderIds();
+  if (!skipped.includes(leaderId) && !(leaderId in getDraftRatings())) {
+    skipped.push(leaderId);
+    localStorage.setItem(DRAFT_SKIPPED_KEY, JSON.stringify(skipped));
+  }
+};
+
+export const getDraftPosition = (): number => {
+  const raw = localStorage.getItem(DRAFT_POSITION_KEY);
+  return raw ? parseInt(raw, 10) : 0;
+};
+
+export const setDraftPosition = (index: number): void => {
+  localStorage.setItem(DRAFT_POSITION_KEY, index.toString());
+};
+
+// Clears all in-progress draft state. Call this after a successful final
+// submit (the draft has become real votes) or if the student wants to
+// restart their evaluation from scratch.
+export const clearDraftState = (): void => {
+  localStorage.removeItem(DRAFT_RATINGS_KEY);
+  localStorage.removeItem(DRAFT_SKIPPED_KEY);
+  localStorage.removeItem(DRAFT_POSITION_KEY);
 };
 
 // ============================================
