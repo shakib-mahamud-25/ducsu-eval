@@ -39,14 +39,30 @@ interface EvaluationFlowProps {
   leaders: Leader[];
   onClose: () => void;
   onComplete: () => void;
+  // Whether the quick/unverified vote option should be offered at all.
+  // Defaults to true so existing callers don't break if they don't pass it.
+  unverifiedEnabled?: boolean;
 }
 
 type Screen = 'choose-track' | 'email-entry' | 'email-sent' | 'rating' | 'summary' | 'submitting';
 
-export default function EvaluationFlow({ leaders, onClose, onComplete }: EvaluationFlowProps) {
-  const [track, setTrack] = useState<VoteTrack | null>(() => getDraftTrack());
+export default function EvaluationFlow({
+  leaders,
+  onClose,
+  onComplete,
+  unverifiedEnabled = true,
+}: EvaluationFlowProps) {
+  const [track, setTrack] = useState<VoteTrack | null>(() => {
+    const existing = getDraftTrack();
+    // If a draft says "unverified" but that track has since been disabled
+    // by an admin, don't honor the stale draft choice — send them back to
+    // pick again (they'll only see the verified option).
+    if (existing === 'unverified' && !unverifiedEnabled) return null;
+    return existing;
+  });
   const [screen, setScreen] = useState<Screen>(() => {
     const existingTrack = getDraftTrack();
+    if (existingTrack === 'unverified' && !unverifiedEnabled) return 'choose-track';
     if (!existingTrack) return 'choose-track';
     if (existingTrack === 'verified' && !getCurrentUser()) return 'choose-track';
     return 'rating';
@@ -112,6 +128,7 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
 
   // ============ TRACK SELECTION ============
   const handleChooseTrack = (chosen: VoteTrack) => {
+    if (chosen === 'unverified' && !unverifiedEnabled) return;
     setTrack(chosen);
     setDraftTrack(chosen);
     if (chosen === 'unverified') {
@@ -203,6 +220,12 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
     setSubmitError(null);
 
     if (track === 'unverified') {
+      if (!unverifiedEnabled) {
+        setSubmitError('Quick vote is no longer available. Please use verified (DU email) voting.');
+        setScreen('choose-track');
+        return;
+      }
+
       const token = getTurnstileToken(turnstileWidgetId);
       if (!turnstileVerified || !token) {
         setSubmitError('Please complete the verification above.');
@@ -292,22 +315,26 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
         <div className="p-6 sm:p-8">
           <h2 className="font-display text-2xl text-navy-800 mb-1">How would you like to vote?</h2>
           <p className="text-navy-500 text-sm mb-6">
-            Both options are anonymous. Choose the one that fits you.
+            {unverifiedEnabled
+              ? 'Both options are anonymous. Choose the one that fits you.'
+              : 'Sign in with your DU email to vote — it stays anonymous, only used to confirm one vote per student.'}
           </p>
 
           <div className="space-y-3">
-            <button
-              onClick={() => handleChooseTrack('unverified')}
-              className="w-full text-left border border-navy-200 rounded-xl p-4 hover:border-maroon-300 hover:bg-maroon-50 transition flex gap-3"
-            >
-              <Zap size={22} className="text-navy-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium text-navy-800">Quick vote</p>
-                <p className="text-navy-500 text-sm mt-0.5">
-                  No login needed. Takes a moment, protected by standard bot and duplicate checks.
-                </p>
-              </div>
-            </button>
+            {unverifiedEnabled && (
+              <button
+                onClick={() => handleChooseTrack('unverified')}
+                className="w-full text-left border border-navy-200 rounded-xl p-4 hover:border-maroon-300 hover:bg-maroon-50 transition flex gap-3"
+              >
+                <Zap size={22} className="text-navy-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-navy-800">Quick vote</p>
+                  <p className="text-navy-500 text-sm mt-0.5">
+                    No login needed. Takes a moment, protected by standard bot and duplicate checks.
+                  </p>
+                </div>
+              </button>
+            )}
 
             <button
               onClick={() => handleChooseTrack('verified')}

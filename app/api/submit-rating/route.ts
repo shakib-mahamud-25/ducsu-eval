@@ -7,6 +7,7 @@ import {
   getSubmissionCountByIp,
   flagSuspiciousIp,
   getVotingWindowConfig,
+  getTracksConfig,
   hasEmailAlreadyVoted,
   markEmailAsVoted,
   VoteTrack,
@@ -81,6 +82,19 @@ export async function POST(request: NextRequest) {
 
     if (track !== 'verified' && track !== 'unverified') {
       return NextResponse.json({ error: 'Invalid vote track.' }, { status: 400 });
+    }
+
+    // 2b. If the unverified track has been switched off by an admin, block
+    // it here too — this stops anyone from bypassing the hidden UI button
+    // by calling the API directly.
+    if (track === 'unverified') {
+      const tracksConfig = await getTracksConfig();
+      if (!tracksConfig.unverifiedEnabled) {
+        return NextResponse.json(
+          { error: 'Quick vote is no longer available. Please use verified (DU email) voting.', trackDisabled: true },
+          { status: 403 }
+        );
+      }
     }
 
     // 3. Validate ratings

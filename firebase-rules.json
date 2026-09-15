@@ -47,6 +47,12 @@
       ".write": true,
       "voting_window": {
         ".validate": "newData.hasChildren(['isOpen'])"
+      },
+      "tracks": {
+        ".validate": "newData.hasChildren(['unverifiedEnabled'])",
+        "unverifiedEnabled": {
+          ".validate": "newData.isBoolean()"
+        }
       }
     }
   }

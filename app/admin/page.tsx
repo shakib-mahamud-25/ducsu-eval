@@ -8,9 +8,12 @@ import {
   getLeaderScores,
   getVotingWindowConfig,
   setVotingWindowConfig,
+  getTracksConfig,
+  setTracksConfig,
   deleteMultipleFlaggedEntries,
   DualTrackLeaderScore,
   VotingWindowConfig,
+  TracksConfig,
   FlaggedSubmission,
 } from '@/lib/firebase';
 
@@ -33,9 +36,13 @@ function AdminDashboardContent() {
     startTime: null,
     endTime: null,
   });
+  const [tracksConfig, setTracksConfigState] = useState<TracksConfig>({
+    unverifiedEnabled: true,
+  });
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [savingWindow, setSavingWindow] = useState(false);
+  const [savingTracks, setSavingTracks] = useState(false);
   const [activeTab, setActiveTab] = useState<'flagged' | 'results' | 'settings'>('flagged');
 
   useEffect(() => {
@@ -77,10 +84,11 @@ function AdminDashboardContent() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [flagged, scores, window] = await Promise.all([
+      const [flagged, scores, window, tracks] = await Promise.all([
         getFlaggedSubmissions(),
         getLeaderScores(),
         getVotingWindowConfig(),
+        getTracksConfig(),
       ]);
 
       const rows: FlaggedRow[] = Array.from(flagged.entries()).map(([flagId, data]) => ({
@@ -91,6 +99,7 @@ function AdminDashboardContent() {
       setFlaggedRows(rows);
       setLeaderScores(scores);
       setVotingWindowState(window);
+      setTracksConfigState(tracks);
       setSelectedFlagIds(new Set());
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -154,6 +163,19 @@ function AdminDashboardContent() {
       alert('Failed to save. Check the console for details.');
     } finally {
       setSavingWindow(false);
+    }
+  };
+
+  const handleSaveTracksConfig = async (next: TracksConfig) => {
+    setSavingTracks(true);
+    try {
+      await setTracksConfig(next);
+      setTracksConfigState(next);
+    } catch (error) {
+      console.error('Failed to save tracks config:', error);
+      alert('Failed to save. Check the console for details.');
+    } finally {
+      setSavingTracks(false);
     }
   };
 
@@ -398,11 +420,18 @@ function AdminDashboardContent() {
             )}
 
             {activeTab === 'settings' && (
-              <VotingWindowPanel
-                votingWindow={votingWindow}
-                saving={savingWindow}
-                onSave={handleSaveVotingWindow}
-              />
+              <div className="space-y-8">
+                <VotingWindowPanel
+                  votingWindow={votingWindow}
+                  saving={savingWindow}
+                  onSave={handleSaveVotingWindow}
+                />
+                <TracksConfigPanel
+                  tracksConfig={tracksConfig}
+                  saving={savingTracks}
+                  onSave={handleSaveTracksConfig}
+                />
+              </div>
             )}
           </>
         )}
@@ -497,6 +526,71 @@ function VotingWindowPanel({
         <button
           onClick={() => onSave({ ...votingWindow, isOpen })}
           disabled={saving || isOpen === votingWindow.isOpen}
+          className="w-full bg-maroon-600 hover:bg-maroon-700 text-white font-medium py-2.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TracksConfigPanel({
+  tracksConfig,
+  saving,
+  onSave,
+}: {
+  tracksConfig: TracksConfig;
+  saving: boolean;
+  onSave: (config: TracksConfig) => void;
+}) {
+  const [unverifiedEnabled, setUnverifiedEnabled] = useState(tracksConfig.unverifiedEnabled);
+
+  useEffect(() => {
+    setUnverifiedEnabled(tracksConfig.unverifiedEnabled);
+  }, [tracksConfig.unverifiedEnabled]);
+
+  return (
+    <div className="max-w-md">
+      <div className="flex items-center gap-2 mb-4">
+        <Zap size={18} className="text-navy-400" />
+        <h2 className="text-lg font-medium">Quick Vote (Unverified Track)</h2>
+      </div>
+
+      <div className="bg-navy-800 rounded-lg p-5 border border-navy-700 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Quick vote is currently</p>
+            <p className={`text-sm ${unverifiedEnabled ? 'text-gold-400' : 'text-navy-400'}`}>
+              {unverifiedEnabled
+                ? 'Enabled — students can submit without DU email'
+                : 'Disabled — only verified (DU email) voting is offered'}
+            </p>
+          </div>
+          <button
+            onClick={() => setUnverifiedEnabled(!unverifiedEnabled)}
+            className={`relative w-12 h-6 rounded-full transition ${
+              unverifiedEnabled ? 'bg-maroon-600' : 'bg-navy-600'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                unverifiedEnabled ? 'translate-x-6' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        <p className="text-navy-400 text-xs leading-relaxed">
+          This takes effect immediately for all students — no redeploy needed. When disabled,
+          the "Quick vote" option is hidden from the track-choice screen and the server also
+          rejects new unverified submissions directly. Verified (DU email) voting is never
+          affected by this toggle.
+        </p>
+
+        <button
+          onClick={() => onSave({ ...tracksConfig, unverifiedEnabled })}
+          disabled={saving || unverifiedEnabled === tracksConfig.unverifiedEnabled}
           className="w-full bg-maroon-600 hover:bg-maroon-700 text-white font-medium py-2.5 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed text-sm"
         >
           {saving ? 'Saving…' : 'Save changes'}

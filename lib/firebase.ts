@@ -263,6 +263,42 @@ export const setVotingWindowConfig = async (config: VotingWindowConfig): Promise
 };
 
 // ============================================
+// TRACKS CONFIG (admin on/off switch for the unverified/"quick vote" track)
+// ============================================
+// Lets an admin disable quick (unverified) voting at runtime without a
+// redeploy, e.g. once verified turnout looks healthy. The verified
+// (DU email) track can never be disabled from here — only unverified.
+
+export interface TracksConfig {
+  unverifiedEnabled: boolean;
+}
+
+const DEFAULT_TRACKS_CONFIG: TracksConfig = {
+  unverifiedEnabled: true,
+};
+
+export const getTracksConfig = async (): Promise<TracksConfig> => {
+  const configRef = ref(database, 'config/tracks');
+  const snapshot = await get(configRef);
+  if (!snapshot.exists()) return DEFAULT_TRACKS_CONFIG;
+  return { ...DEFAULT_TRACKS_CONFIG, ...snapshot.val() };
+};
+
+export const listenToTracksConfig = (
+  callback: (config: TracksConfig) => void
+): Unsubscribe => {
+  const configRef = ref(database, 'config/tracks');
+  return onValue(configRef, (snapshot) => {
+    callback(snapshot.exists() ? { ...DEFAULT_TRACKS_CONFIG, ...snapshot.val() } : DEFAULT_TRACKS_CONFIG);
+  });
+};
+
+export const setTracksConfig = async (config: TracksConfig): Promise<void> => {
+  const configRef = ref(database, 'config/tracks');
+  await set(configRef, config);
+};
+
+// ============================================
 // FLAGGED SUBMISSION DELETION (admin fraud review, unverified track only)
 // ============================================
 

@@ -5,8 +5,9 @@ import { Loader2, Lock, Info } from 'lucide-react';
 import LeaderCard from '@/components/LeaderCard';
 import TopBottomDashboard from '@/components/TopBottomDashboard';
 import EvaluationFlow from '@/components/EvaluationFlow';
-import { detectIncognitoMode, getVotedLeaderIds } from '@/lib/fingerprint';
-import { listenToScores, listenToVotingWindow, DualTrackLeaderScore, VotingWindowConfig } from '@/lib/firebase';
+import { detectIncognitoMode, getVotedLeaderIds, getDraftTrack } from '@/lib/fingerprint';
+import { getCurrentUser } from '@/lib/auth';
+import { listenToScores, listenToVotingWindow, listenToTracksConfig, DualTrackLeaderScore, VotingWindowConfig, TracksConfig } from '@/lib/firebase';
 
 interface Leader {
   id: string;
@@ -28,6 +29,9 @@ export default function Home() {
     isOpen: true,
     startTime: null,
     endTime: null,
+  });
+  const [tracksConfig, setTracksConfigState] = useState<TracksConfig>({
+    unverifiedEnabled: true,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -64,6 +68,21 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = listenToVotingWindow((config) => setVotingWindow(config));
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = listenToTracksConfig((config) => setTracksConfigState(config));
+    return () => unsubscribe();
+  }, []);
+
+  // Bug 1 fix: if the user just came back from clicking their verification
+  // link (a verified draft is in progress and they're now signed in),
+  // jump straight back into the rating flow instead of dropping them on
+  // the leader grid and making them tap "Continue evaluation" again.
+  useEffect(() => {
+    if (getDraftTrack() === 'verified' && getCurrentUser()) {
+      setShowFlow(true);
+    }
   }, []);
 
   const handleFlowComplete = () => {
@@ -213,6 +232,7 @@ export default function Home() {
           leaders={leaders}
           onClose={() => setShowFlow(false)}
           onComplete={handleFlowComplete}
+          unverifiedEnabled={tracksConfig.unverifiedEnabled}
         />
       )}
 
