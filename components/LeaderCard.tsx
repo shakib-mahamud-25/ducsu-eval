@@ -50,7 +50,7 @@ export default function LeaderCard({
       className="group relative overflow-hidden rounded-xl bg-white border border-navy-100 transition-shadow duration-200 hover:shadow-lg"
     >
       {/* Image */}
-      <div className="relative h-64 w-full overflow-hidden bg-navy-50">
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-navy-50">
         {!imageError ? (
           <Image
             src={imageUrl}
