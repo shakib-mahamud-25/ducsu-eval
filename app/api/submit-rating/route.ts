@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { getApps, initializeApp, cert, App } from 'firebase-admin/app';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import {
   batchSubmitRatings,
   logFraudDetection,
@@ -29,32 +28,20 @@ interface SubmitRatingRequest {
   fingerprintHash?: string;
   visitorId?: string;
   // Verified track fields
-  firebaseIdToken?: string;
+  clerkSessionToken?: string;
 }
 
 const IP_SOFT_CAP = parseInt(process.env.NEXT_PUBLIC_IP_SOFT_CAP || '8', 10);
 const IP_HARD_REVIEW_CAP = parseInt(process.env.NEXT_PUBLIC_IP_HARD_REVIEW_CAP || '12', 10);
 
 // ============================================
-// FIREBASE ADMIN (server-side ID token verification for the verified track)
+// CLERK (server-side session token verification for the verified track)
 // ============================================
-// Requires FIREBASE_SERVICE_ACCOUNT_KEY env var: the JSON key for a service
-// account, stringified. Generate from Firebase Console → Project Settings
-// → Service Accounts → Generate new private key.
+// Requires CLERK_SECRET_KEY env var (from the Clerk dashboard -> API Keys).
 
-let adminApp: App;
-const getAdminApp = (): App => {
-  if (getApps().length > 0) {
-    return getApps()[0];
-  }
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!serviceAccountJson) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is not configured on the server.');
-  }
-  const serviceAccount = JSON.parse(serviceAccountJson);
-  adminApp = initializeApp({ credential: cert(serviceAccount) });
-  return adminApp;
-};
+const clerkClient = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY,
+});
 
 // Same hashing approach as lib/auth.ts's client-side hashEmail, so the
 // same email always produces the same hash whether hashed on client or
@@ -124,8 +111,8 @@ export async function POST(request: NextRequest) {
     // VERIFIED TRACK
     // ============================================
     if (track === 'verified') {
-      const { firebaseIdToken } = body;
-      if (!firebaseIdToken) {
+      const { clerkSessionToken } = body;
+      if (!clerkSessionToken) {
         return NextResponse.json(
           { error: 'Missing verification token. Please sign in again.' },
           { status: 401 }
@@ -134,11 +121,20 @@ export async function POST(request: NextRequest) {
 
       let decodedEmail: string | undefined;
       try {
-        const admin = getAdminApp();
-        const decoded = await getAuth(admin).verifyIdToken(firebaseIdToken);
-        decodedEmail = decoded.email;
+        // verifyToken checks the JWT signature/expiry against Clerk's
+        // public keys. authenticateRequest (used elsewhere in Clerk apps)
+        // is also an option, but since the token is sent explicitly in the
+        // JSON body here (not as a cookie/header on this request), we
+        // verify it directly.
+        const claims = await verifyToken(clerkSessionToken, {
+          secretKey: process.env.CLERK_SECRET_KEY,
+        });
+
+        const userId = claims.sub;
+        const user = await clerkClient.users.getUser(userId);
+        decodedEmail = user.primaryEmailAddress?.emailAddress || user.emailAddresses[0]?.emailAddress;
       } catch (err) {
-        console.error('Firebase ID token verification failed:', err);
+        console.error('Clerk session token verification failed:', err);
         return NextResponse.json(
           { error: 'Your verification has expired. Please sign in again.' },
           { status: 401 }
