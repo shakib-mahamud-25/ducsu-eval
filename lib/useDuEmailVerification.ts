@@ -54,7 +54,7 @@ export function useDuEmailVerification(): UseDuEmailVerificationResult {
         return false;
       }
 
-      if (!signInLoaded || !signUpLoaded) {
+      if (!signInLoaded || !signUpLoaded || !signIn || !signUp) {
         setError('Still loading, please try again in a moment.');
         return false;
       }
@@ -111,6 +111,10 @@ export function useDuEmailVerification(): UseDuEmailVerificationResult {
       setIsLoading(true);
       try {
         if (mode === 'sign-in') {
+          if (!signIn) {
+            setError('Your session expired. Please request a new code.');
+            return false;
+          }
           const result = await signIn.attemptFirstFactor({
             strategy: 'email_code',
             code: trimmedCode,
@@ -124,6 +128,10 @@ export function useDuEmailVerification(): UseDuEmailVerificationResult {
         }
 
         if (mode === 'sign-up') {
+          if (!signUp) {
+            setError('Your session expired. Please request a new code.');
+            return false;
+          }
           const result = await signUp.attemptEmailAddressVerification({ code: trimmedCode });
           if (result.status === 'complete') {
             await setActiveFromSignUp({ session: result.createdSessionId });
