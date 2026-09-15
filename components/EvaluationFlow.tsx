@@ -20,10 +20,9 @@ import {
   markLeaderAsVoted,
 } from '@/lib/fingerprint';
 import { loadTurnstileScript, renderTurnstile, getTurnstileToken, resetTurnstile } from '@/lib/turnstile';
-import { sendVerificationLink, getCurrentUser, hashEmail } from '@/lib/auth';
+import { useDuEmailVerification } from '@/lib/useDuEmailVerification';
 import { VoteTrack } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/auth';
+import { useAuth } from '@clerk/nextjs';
 
 interface Leader {
   id: string;
@@ -44,7 +43,10 @@ interface EvaluationFlowProps {
   unverifiedEnabled?: boolean;
 }
 
-type Screen = 'choose-track' | 'email-entry' | 'email-sent' | 'rating' | 'summary' | 'submitting';
+// 'email-entry' and 'email-code' replace the old link-based
+// 'email-entry' / 'email-sent' pair: Clerk emails a 6-digit code instead of
+// a magic link, so the user never leaves this screen to verify.
+type Screen = 'choose-track' | 'email-entry' | 'email-code' | 'rating' | 'summary' | 'submitting';
 
 export default function EvaluationFlow({
   leaders,
@@ -52,6 +54,9 @@ export default function EvaluationFlow({
   onComplete,
   unverifiedEnabled = true,
 }: EvaluationFlowProps) {
+  const { isSignedIn, getToken } = useAuth();
+  const emailVerification = useDuEmailVerification();
+
   const [track, setTrack] = useState<VoteTrack | null>(() => {
     const existing = getDraftTrack();
     // If a draft says "unverified" but that track has since been disabled
@@ -64,7 +69,11 @@ export default function EvaluationFlow({
     const existingTrack = getDraftTrack();
     if (existingTrack === 'unverified' && !unverifiedEnabled) return 'choose-track';
     if (!existingTrack) return 'choose-track';
-    if (existingTrack === 'verified' && !getCurrentUser()) return 'choose-track';
+    // isSignedIn from Clerk isn't known synchronously on first render, so
+    // this may briefly show email-entry even for an already-signed-in
+    // returning user; the effect below promotes them to 'rating' once
+    // Clerk reports isSignedIn === true.
+    if (existingTrack === 'verified' && !isSignedIn) return 'choose-track';
     return 'rating';
   });
 
@@ -79,23 +88,16 @@ export default function EvaluationFlow({
 
   // Email-entry state (verified track only)
   const [emailInput, setEmailInput] = useState('');
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [sendingLink, setSendingLink] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(!!getCurrentUser());
+  const [codeInput, setCodeInput] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsSignedIn(!!user);
-      // If a verified user completes sign-in (e.g. returning from /verify
-      // in the same tab context) while this flow is mounted, move them
-      // straight into rating.
-      if (user && track === 'verified' && screen !== 'rating' && screen !== 'summary' && screen !== 'submitting') {
-        setScreen('rating');
-      }
-    });
-    return () => unsubscribe();
+    // If a verified user completes sign-in while this flow is mounted, move
+    // them straight into rating.
+    if (isSignedIn && track === 'verified' && screen !== 'rating' && screen !== 'summary' && screen !== 'submitting') {
+      setScreen('rating');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track]);
+  }, [isSignedIn, track]);
 
   const currentLeader = leaders[position];
   const ratedCount = Object.keys(ratings).length;
@@ -134,22 +136,24 @@ export default function EvaluationFlow({
     if (chosen === 'unverified') {
       setScreen('rating');
     } else {
-      setScreen(getCurrentUser() ? 'rating' : 'email-entry');
+      setScreen(isSignedIn ? 'rating' : 'email-entry');
     }
   };
 
   // ============ EMAIL ENTRY (verified track) ============
-  const handleSendLink = async (e: React.FormEvent) => {
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    setEmailError(null);
-    setSendingLink(true);
-    try {
-      await sendVerificationLink(emailInput);
-      setScreen('email-sent');
-    } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Could not send the verification link.');
-    } finally {
-      setSendingLink(false);
+    const ok = await emailVerification.sendCode(emailInput);
+    if (ok) {
+      setScreen('email-code');
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await emailVerification.verifyCode(codeInput);
+    if (ok) {
+      setScreen('rating');
     }
   };
 
@@ -271,8 +275,7 @@ export default function EvaluationFlow({
     }
 
     // Verified track
-    const user = getCurrentUser();
-    if (!user) {
+    if (!isSignedIn) {
       setSubmitError('Your session expired. Please verify your email again.');
       setScreen('email-entry');
       return;
@@ -280,7 +283,10 @@ export default function EvaluationFlow({
 
     setScreen('submitting');
     try {
-      const idToken = await user.getIdToken();
+      const clerkToken = await getToken();
+      if (!clerkToken) {
+        throw new Error('Your session expired. Please verify your email again.');
+      }
 
       const response = await fetch('/api/submit-rating', {
         method: 'POST',
@@ -288,7 +294,7 @@ export default function EvaluationFlow({
         body: JSON.stringify({
           ratings: Object.entries(ratings).map(([leaderId, score]) => ({ leaderId, score })),
           track: 'verified',
-          firebaseIdToken: idToken,
+          clerkSessionToken: clerkToken,
         }),
       });
 
@@ -362,30 +368,36 @@ export default function EvaluationFlow({
         <div className="p-6 sm:p-8">
           <h2 className="font-display text-2xl text-navy-800 mb-1">Verify your DU email</h2>
           <p className="text-navy-500 text-sm mb-6">
-            We'll send a sign-in link to your official DU student email
-            (e.g. name-id@dept.du.ac.bd). Tap it to continue — no password needed.
+            We'll email a 6-digit code to your official DU student email
+            (e.g. name-id@dept.du.ac.bd). Enter it on the next screen — no password needed.
           </p>
 
-          <form onSubmit={handleSendLink} className="space-y-3">
+          <form onSubmit={handleSendCode} className="space-y-3">
             <input
               type="email"
               value={emailInput}
               onChange={(e) => setEmailInput(e.target.value)}
               placeholder="name-id@dept.du.ac.bd"
               className="w-full border border-navy-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-maroon-400"
+              autoComplete="email"
             />
-            {emailError && <p className="text-maroon-600 text-sm">{emailError}</p>}
+            {emailVerification.error && (
+              <p className="text-maroon-600 text-sm">{emailVerification.error}</p>
+            )}
             <button
               type="submit"
-              disabled={sendingLink}
+              disabled={emailVerification.isLoading}
               className="w-full bg-maroon-600 text-white font-semibold py-3 rounded-lg hover:bg-maroon-700 transition disabled:opacity-50"
             >
-              {sendingLink ? 'Sending…' : 'Send verification link'}
+              {emailVerification.isLoading ? 'Sending…' : 'Send verification code'}
             </button>
           </form>
 
           <button
-            onClick={() => setScreen('choose-track')}
+            onClick={() => {
+              emailVerification.reset();
+              setScreen('choose-track');
+            }}
             className="w-full text-navy-400 text-sm mt-4 hover:text-navy-600 transition"
           >
             ← Back
@@ -395,19 +407,60 @@ export default function EvaluationFlow({
     );
   }
 
-  // ============ EMAIL SENT ============
-  if (screen === 'email-sent') {
+  // ============ EMAIL CODE ENTRY ============
+  if (screen === 'email-code') {
     return (
       <FlowShell onClose={onClose}>
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <Mail className="w-12 h-12 text-navy-500 mb-4" />
-          <h2 className="font-display text-2xl text-navy-800 mb-2">Check your inbox</h2>
-          <p className="text-navy-500 text-sm mb-1">We sent a sign-in link to</p>
-          <p className="text-navy-800 font-medium mb-4">{emailInput}</p>
-          <p className="text-navy-400 text-xs max-w-xs">
-            Open it on this device to come straight back here. If it lands on another device,
-            you'll just be asked to confirm your email once more.
-          </p>
+        <div className="p-6 sm:p-8">
+          <Mail className="w-10 h-10 text-navy-500 mb-4" />
+          <h2 className="font-display text-2xl text-navy-800 mb-1">Enter the code</h2>
+          <p className="text-navy-500 text-sm mb-1">We sent a 6-digit code to</p>
+          <p className="text-navy-800 font-medium mb-5">{emailInput}</p>
+
+          <form onSubmit={handleVerifyCode} className="space-y-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, ''))}
+              placeholder="123456"
+              className="w-full border border-navy-200 rounded-lg px-4 py-2.5 text-center text-lg tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-maroon-400"
+              autoComplete="one-time-code"
+              autoFocus
+            />
+            {emailVerification.error && (
+              <p className="text-maroon-600 text-sm text-left">{emailVerification.error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={emailVerification.isLoading || codeInput.length < 6}
+              className="w-full bg-maroon-600 text-white font-semibold py-3 rounded-lg hover:bg-maroon-700 transition disabled:opacity-50"
+            >
+              {emailVerification.isLoading ? 'Verifying…' : 'Verify & continue'}
+            </button>
+          </form>
+
+          <div className="flex items-center justify-between mt-4">
+            <button
+              onClick={() => {
+                emailVerification.reset();
+                setCodeInput('');
+                setScreen('email-entry');
+              }}
+              className="text-navy-400 text-sm hover:text-navy-600 transition"
+            >
+              ← Use a different email
+            </button>
+            <button
+              onClick={() => emailVerification.sendCode(emailInput)}
+              disabled={emailVerification.isLoading}
+              className="text-maroon-600 text-sm hover:text-maroon-700 transition disabled:opacity-50"
+            >
+              Resend code
+            </button>
+          </div>
         </div>
       </FlowShell>
     );
@@ -438,7 +491,7 @@ export default function EvaluationFlow({
   // ============ SUMMARY ============
   if (screen === 'summary') {
     const readyToSubmit = unratedLeaders.length === 0;
-    const canSubmit = track === 'unverified' ? turnstileVerified : isSignedIn;
+    const canSubmit = track === 'unverified' ? turnstileVerified : !!isSignedIn;
 
     return (
       <FlowShell onClose={onClose}>
