@@ -49,15 +49,29 @@ export const getTurnstileToken = (widgetId?: string): string => {
   }
 };
 
+// Guarded against the widget already being gone (e.g. the modal was closed,
+// or this is called a second time after the container was unmounted).
+// Turnstile throws in that case, and previously that throw would escape
+// uncaught from inside a catch block in EvaluationFlow, which stopped the
+// rest of the error-handling code from running and left the UI stuck on
+// the "Saving your evaluation…" screen forever. This must never throw.
 export const resetTurnstile = (widgetId?: string): void => {
-  if (window.turnstile) {
-    window.turnstile.reset(widgetId);
+  try {
+    if (window.turnstile && widgetId) {
+      window.turnstile.reset(widgetId);
+    }
+  } catch (err) {
+    console.warn('Turnstile reset skipped (widget likely already gone):', err);
   }
 };
 
 export const removeTurnstile = (widgetId?: string): void => {
-  if (window.turnstile) {
-    window.turnstile.remove(widgetId);
+  try {
+    if (window.turnstile && widgetId) {
+      window.turnstile.remove(widgetId);
+    }
+  } catch (err) {
+    console.warn('Turnstile remove skipped (widget likely already gone):', err);
   }
 };
 
