@@ -184,14 +184,19 @@ export default function EvaluationFlow({ leaders, onClose, onComplete }: Evaluat
         onComplete();
       }, 2000);
     } catch (error) {
-      resetTurnstile(turnstileWidgetId);
-      setTurnstileVerified(false);
+      // Restore the UI first. resetTurnstile is now safe to call (it
+      // swallows its own errors), but we still sequence it last on
+      // purpose: if anything unexpected ever throws during cleanup, the
+      // person has already been taken off the frozen "Saving…" screen
+      // and shown an error instead of being stuck indefinitely.
       setSubmitError(
         error instanceof Error
           ? error.message
           : 'Something went wrong. Your ratings are still saved on this device — please try submitting again.'
       );
+      setTurnstileVerified(false);
       setScreen('summary');
+      resetTurnstile(turnstileWidgetId);
     }
   };
 
