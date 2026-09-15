@@ -6,7 +6,7 @@ import LeaderCard from '@/components/LeaderCard';
 import TopBottomDashboard from '@/components/TopBottomDashboard';
 import EvaluationFlow from '@/components/EvaluationFlow';
 import { detectIncognitoMode, getVotedLeaderIds, getDraftTrack } from '@/lib/fingerprint';
-import { getCurrentUser } from '@/lib/auth';
+import { useAuth } from '@clerk/nextjs';
 import { listenToScores, listenToVotingWindow, listenToTracksConfig, DualTrackLeaderScore, VotingWindowConfig, TracksConfig } from '@/lib/firebase';
 
 interface Leader {
@@ -20,6 +20,7 @@ interface Leader {
 }
 
 export default function Home() {
+  const { isSignedIn } = useAuth();
   const [leaders, setLeaders] = useState<Leader[]>([]);
   const [votedLeaderIds, setVotedLeaderIds] = useState<string[]>([]);
   const [leaderScores, setLeaderScores] = useState<Map<string, DualTrackLeaderScore>>(new Map());
@@ -75,15 +76,17 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Bug 1 fix: if the user just came back from clicking their verification
-  // link (a verified draft is in progress and they're now signed in),
+  // Bug 1 fix: if the user just came back from verifying their email (a
+  // verified draft is in progress and they're now signed in with Clerk),
   // jump straight back into the rating flow instead of dropping them on
   // the leader grid and making them tap "Continue evaluation" again.
+  // isSignedIn is undefined while Clerk is still loading, then becomes a
+  // real boolean, so this effect re-runs once Clerk resolves.
   useEffect(() => {
-    if (getDraftTrack() === 'verified' && getCurrentUser()) {
+    if (getDraftTrack() === 'verified' && isSignedIn) {
       setShowFlow(true);
     }
-  }, []);
+  }, [isSignedIn]);
 
   const handleFlowComplete = () => {
     setShowFlow(false);
